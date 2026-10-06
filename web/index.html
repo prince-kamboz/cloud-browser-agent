@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Browser Agent POC</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+    <aside class="chat">
+      <header class="chat-head">
+        <div class="brand">
+          <span class="dot" id="statusDot"></span>
+          <div class="brand-text">
+            <div class="title">Browser Agent</div>
+            <div class="status" id="statusText">Connecting…</div>
+          </div>
+        </div>
+        <div class="head-actions">
+          <button class="ghost" id="newChatBtn" title="Start a new conversation">New chat</button>
+          <button class="ghost" id="detailsBtn" title="Show technical steps">Details</button>
+          <button class="ghost" id="settingsBtn" title="Cookies and website approvals">Settings</button>
+        </div>
+      </header>
+
+      <div class="messages" id="messages">
+        <div class="msg system">
+          Ask the agent to do something on the web, e.g. <em>"Find the top 3 Python repos trending on GitHub today and list their stars."</em>
+        </div>
+      </div>
+
+      <form class="composer" id="composer">
+        <div class="composer-box">
+          <textarea id="input" rows="1" placeholder="What should the agent do?"></textarea>
+          <button type="button" class="stop" id="stopBtn" title="Stop" hidden>
+            <svg viewBox="0 0 24 24" width="16" height="16"><rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/></svg>
+          </button>
+          <button type="submit" class="send" id="sendBtn" title="Send">
+            <svg viewBox="0 0 24 24" width="18" height="18"><path d="M12 19V5M5 12l7-7 7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
+        <div class="hint">Enter to send · Shift+Enter for a new line</div>
+      </form>
+    </aside>
+
+    <main class="viewer">
+      <div class="chrome">
+        <div class="tabrow">
+          <div class="tabstrip" id="tabstrip"></div>
+          <button class="icon" id="reloadViewBtn" title="Reconnect the live view">
+            <svg viewBox="0 0 24 24" width="16" height="16"><path d="M4 12a8 8 0 0 1 14-5.3M20 12a8 8 0 0 1-14 5.3M18 3v4h-4M6 21v-4h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
+        <div class="toolbar">
+          <button class="icon" id="backBtn" title="Back"><svg viewBox="0 0 24 24" width="18" height="18"><path d="M19 12H5M12 19l-7-7 7-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          <button class="icon" id="fwdBtn" title="Forward"><svg viewBox="0 0 24 24" width="18" height="18"><path d="M5 12h14M12 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          <button class="icon" id="reloadBtn" title="Reload"><svg viewBox="0 0 24 24" width="18" height="18"><path d="M20 12a8 8 0 1 1-2.5-5.8M20 4v5h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          <form class="urlbar" id="urlbar"><input id="urlInput" type="text" placeholder="Search or enter address" autocomplete="off" spellcheck="false" /></form>
+          <span class="live-badge" id="liveBadge" title="Live view"><i></i>LIVE</span>
+          <button class="takeover" id="takeoverBtn" hidden>Take over</button>
+        </div>
+      </div>
+      <div class="screen">
+        <canvas id="view" tabindex="0" aria-label="Live browser"></canvas>
+        <div class="overlay" id="overlay" hidden>
+          <div class="overlay-pill">Agent is using the browser. Press <b>Take over</b> to control it yourself</div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <dialog id="settings">
+    <form method="dialog" class="dialog-form">
+      <h2>Settings</h2>
+
+      <h3>Cookies</h3>
+      <div class="setting-row">
+        <div><b>Saved cookies</b><p class="muted">Logins kept in the browser profile so the agent stays signed in</p></div>
+        <button type="button" id="cookiesBtn">Manage</button>
+      </div>
+
+      <h3>Website approvals</h3>
+      <div class="setting-row">
+        <div><b>Before opening a website</b><p class="muted" id="modeHelp"></p></div>
+        <select id="approvalMode">
+          <option value="ask">Always ask</option>
+          <option value="auto">Auto approve</option>
+          <option value="allow">Always allow</option>
+        </select>
+      </div>
+
+      <div class="setting-row">
+        <div><h3 class="inline">Website permissions</h3><p class="muted">Add sites to override the default permission</p></div>
+        <button type="button" id="addSiteBtn">Add website</button>
+      </div>
+      <div class="add-site" id="addSite" hidden>
+        <input id="siteInput" type="text" placeholder="example.com or *.example.com" autocomplete="off" spellcheck="false" />
+        <select id="siteRule">
+          <option value="allow">Always allow</option>
+          <option value="ask">Always ask</option>
+          <option value="block">Block</option>
+        </select>
+        <button type="button" class="ghost" id="siteCancel">Cancel</button>
+        <button type="button" id="siteSave">Add</button>
+      </div>
+      <div id="siteList" class="cookie-list"></div>
+      <p class="muted">localhost, internal addresses of the server and cloud metadata are always blocked.</p>
+
+      <menu><button value="close" class="ghost">Close</button></menu>
+    </form>
+  </dialog>
+
+  <dialog id="cookies">
+    <form method="dialog" class="dialog-form">
+      <h2>Cookies</h2>
+      <p class="muted">Logins are saved to disk so you stay signed in after the browser restarts. Remove them any time.</p>
+      <p class="muted" id="cookieStatus"></p>
+      <div id="cookieList" class="cookie-list"></div>
+      <menu>
+        <button type="button" class="danger" id="clearCookies">Clear all</button>
+        <button value="close" class="ghost">Close</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

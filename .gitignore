@@ -1,0 +1,12 @@
+# secrets and per-user data: never commit
+.env
+lifecycle-state/
+*.key
+
+# local tooling and artifacts
+.claude/
+.DS_Store
+__pycache__/
+node_modules/
+*.zip
+*.tgz

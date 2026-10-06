@@ -1,0 +1,38 @@
+services:
+  browser-agent:
+    build: ./docker
+    container_name: browser-agent-poc
+    # Bound to localhost only: anyone who can reach this port can control the browser.
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      - SCREEN_WIDTH=1280
+      - SCREEN_HEIGHT=800
+      - START_URL=https://www.google.com
+    volumes:
+      - ./web:/srv/web:ro          # the chat UI (edit files, refresh the page)
+      - browser-profile:/data       # cookies / logins survive restarts
+    shm_size: "256mb"
+    stop_grace_period: 30s   # lets Chromium flush cookies and storage before the container stops
+    restart: unless-stopped
+
+  # POC: Deep Agents service. It shares the browser container's network namespace, so Playwright MCP
+  # reaches Chromium's CDP on localhost:9222 and nothing new is published. nginx proxies /agent/ to it.
+  deepagent:
+    build: ./deepagent
+    container_name: deepagent-poc
+    network_mode: "service:browser-agent"
+    depends_on:
+      - browser-agent
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - browser-profile:/data       # the cookie vault lives here, next to the browser profile
+    environment:
+      - MAIN_MODEL=${MAIN_MODEL:-gpt-6.1-sol}
+      - VISION_MODEL=${VISION_MODEL:-gpt-6.1-sol}
+    restart: unless-stopped
+
+volumes:
+  browser-profile:

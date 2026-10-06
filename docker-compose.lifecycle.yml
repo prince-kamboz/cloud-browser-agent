@@ -1,0 +1,52 @@
+# Local lifecycle prototype: browsers on demand, one per user, released when the user leaves.
+#   docker compose -f docker-compose.lifecycle.yml up --build -d
+#   open http://localhost:8090
+# Session containers are created by the manager (not listed here) from the two images below.
+name: lifecycle
+services:
+  traefik:                                   # routes http://s-<id>.localhost:8090 to that session's browser
+    image: traefik:v3
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.network=lifecycle-net
+      - --entrypoints.web.address=:80
+    ports:
+      - "127.0.0.1:8090:80"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks: [lifecycle-net]
+    restart: unless-stopped
+
+  manager:
+    build: ./manager
+    container_name: lifecycle-manager
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - HOST_WEB_DIR=${PWD}/web
+      - PUBLIC_PORT=8090
+      - SUSPEND_AFTER=${SUSPEND_AFTER:-60}
+      - RELEASE_AFTER=${RELEASE_AFTER:-180}
+      - BYE_GRACE=${BYE_GRACE:-10}
+      - BROWSER_IMAGE=${BROWSER_IMAGE:-chatgpt-browser-browser-agent}
+      - AGENT_IMAGE=${AGENT_IMAGE:-chatgpt-browser-deepagent}
+      - MAIN_MODEL=${MAIN_MODEL:-gpt-6.1-sol}
+      - VISION_MODEL=${VISION_MODEL:-gpt-6.1-sol}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock   # POC only: this is root on the host. On AWS this becomes the Lambda MicroVMs API.
+      - ./lifecycle-state:/state
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.manager.rule=Host(`localhost`)
+      - traefik.http.routers.manager.entrypoints=web
+      - traefik.http.services.manager.loadbalancer.server.port=8000
+      - traefik.docker.network=lifecycle-net
+    networks: [lifecycle-net]
+    depends_on: [traefik]
+    restart: unless-stopped
+
+networks:
+  lifecycle-net:
+    name: lifecycle-net

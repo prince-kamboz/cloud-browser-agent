@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Browser Sessions</title>
+  <style>
+    :root { --bg:#f4f4f2; --panel:#fff; --text:#1d1d1b; --muted:#6b6b66; --line:#e4e3df; --accent:#2f6fed; --ok:#1f9d55; --warn:#d48806; --danger:#c93a2f; }
+    @media (prefers-color-scheme: dark) { :root { --bg:#131315; --panel:#1b1b1e; --text:#ecebe8; --muted:#9a9a94; --line:#2c2c30; --accent:#5b8cff; } }
+    * { box-sizing: border-box; }
+    body { margin:0; background:var(--bg); color:var(--text); font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif; }
+    main { max-width: 920px; margin: 0 auto; padding: 24px 16px 48px; }
+    h1 { font-size: 20px; margin: 0 0 4px; } h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 28px 0 8px; }
+    p.sub { margin: 0 0 18px; color: var(--muted); }
+    .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+    .row { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+    .row:last-child { border-bottom: 0; } .grow { flex: 1; min-width: 0; } .muted { color: var(--muted); font-size: 12.5px; } .empty { padding: 16px 14px; color: var(--muted); }
+    input { font: inherit; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--text); }
+    button { font: inherit; padding: 7px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--text); cursor: pointer; white-space: nowrap; }
+    button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; } button:disabled { opacity: .5; cursor: default; }
+    .badge { font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 999px; background: color-mix(in srgb, var(--muted) 18%, transparent); }
+    .badge.running { background: color-mix(in srgb, var(--ok) 20%, transparent); color: var(--ok); }
+    .badge.suspended { background: color-mix(in srgb, var(--warn) 22%, transparent); color: var(--warn); }
+    .badge.starting, .badge.saving { background: color-mix(in srgb, var(--accent) 20%, transparent); color: var(--accent); }
+    a { color: var(--accent); } #msg { margin-top: 10px; min-height: 20px; color: var(--muted); } #msg.err { color: var(--danger); }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Browser sessions</h1>
+  <p class="sub" id="policy">…</p>
+
+  <div class="card"><div class="row">
+    <input id="user" value="alice" placeholder="user name" autocomplete="off" />
+    <button class="primary" id="open">Open browser</button>
+    <span class="muted grow">Starts a browser for this user, restoring what they left behind.</span>
+  </div></div>
+  <div id="msg"></div>
+
+  <h2>Live sessions</h2>
+  <div class="card" id="sessions"></div>
+
+  <h2>Saved state (encrypted)</h2>
+  <div class="card" id="states"></div>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const fmt = (s) => s < 60 ? `${s}s` : `${Math.floor(s/60)}m ${s%60}s`;
+const kb = (n) => n > 1048576 ? (n/1048576).toFixed(1) + ' MB' : Math.round(n/1024) + ' KB';
+const ago = (t) => fmt(Math.max(0, Math.round(Date.now()/1000 - t))) + ' ago';
+const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let cfg = null;
+async function j(url, opt) { const r = await fetch(url, opt); return { ok: r.ok, data: await r.json().catch(() => ({})) }; }
+
+async function refresh() {
+  if (!cfg) { cfg = (await j('/api/config')).data; $('policy').textContent = `Idle for ${cfg.suspend_after}s: paused (instant resume). Paused for ${cfg.release_after}s, or app closed for ${cfg.bye_grace}s: state saved and resources released.`; }
+  const [s, st] = await Promise.all([j('/api/sessions'), j('/api/state')]);
+  const rows = s.data.sessions || [];
+  $('sessions').innerHTML = rows.length ? rows.map((x) => `
+    <div class="row"><span class="badge ${x.state}">${x.state}</span>
+      <div class="grow"><b>${esc(x.user)}</b> <span class="muted">idle ${fmt(x.idle_s)}${x.suspended_for_s != null ? ` · paused ${fmt(x.suspended_for_s)}` : ''} · up ${fmt(x.age_s)}${x.restored ? ' · restored from saved state' : ''}${x.ms && x.ms.total ? ` · started in ${(x.ms.total/1000).toFixed(1)}s` : ''}</span></div>
+      <a href="${x.url}" target="_blank">Open</a><button data-rel="${x.sid}">Release now</button></div>`).join('') : '<div class="empty">No live sessions.</div>';
+  const sts = st.data.states || [];
+  $('states').innerHTML = sts.length ? sts.map((x) => `
+    <div class="row"><div class="grow"><b>${esc(x.user)}</b> <span class="muted">${kb(x.size)} · saved ${ago(x.saved_at)} · ${(x.tabs||[]).length} tab(s)${x.clean_exit === false ? ' · unclean exit (cookie copy used)' : ''}</span></div>
+      <button data-del="${esc(x.user)}">Delete</button></div>`).join('') : '<div class="empty">Nothing saved yet.</div>';
+}
+document.addEventListener('click', async (e) => {
+  const rel = e.target.dataset?.rel, del = e.target.dataset?.del;
+  if (rel) { e.target.disabled = true; e.target.textContent = 'Saving…'; await j(`/api/sessions/${rel}/release`, { method: 'POST' }); refresh(); }
+  if (del && confirm(`Delete saved state for ${del}? They will have to sign in again.`)) { await j(`/api/state/${del}`, { method: 'DELETE' }); refresh(); }
+});
+$('open').onclick = async () => {
+  const b = $('open'); b.disabled = true; $('msg').className = ''; $('msg').textContent = 'Starting…';
+  const t0 = Date.now();
+  const r = await j('/api/sessions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user: $('user').value }) });
+  b.disabled = false;
+  if (!r.ok) { $('msg').className = 'err'; $('msg').textContent = r.data.error || 'Could not start'; return; }
+  $('msg').textContent = `Ready in ${((Date.now() - t0) / 1000).toFixed(1)}s${r.data.restored ? ' (saved state restored)' : ''}. Opening…`;
+  window.open(r.data.url, '_blank'); refresh();
+};
+refresh(); setInterval(refresh, 2000);
+</script>
+</body>
+</html>
