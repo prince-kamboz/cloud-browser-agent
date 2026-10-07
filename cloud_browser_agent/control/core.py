@@ -94,13 +94,23 @@ class SessionService:
                 self.store.delete_active(user)
             pid = rec.get("profile_id")
             restored = bool(pid)
-            if not pid and self.p.profile_at_start:             # Browserbase: the context must exist before the session does
+            fresh_profile = False
+            if not pid and self.p.profile_at_start:             # Browserbase / Docker: the profile must exist before the session does
                 pid = self.p.create_profile(f"{user}_p")
+                fresh_profile = True
                 rec["profile_id"] = pid
                 self.store.put(user, rec)
             try:
                 info = self.p.start_session(user, pid, self.session_timeout_s, self.viewport)
             except ProviderError:
+                if fresh_profile:                               # nothing was saved in it yet: do not leak it (it counts against quotas)
+                    rec.pop("profile_id", None)
+                    self.store.put(user, rec)
+                    try:
+                        self.p.delete_profile(pid)
+                    except ProviderError:
+                        pass
+                    raise
                 if not pid:
                     raise
                 # the saved profile is unusable: start clean rather than refuse to open, and say so
