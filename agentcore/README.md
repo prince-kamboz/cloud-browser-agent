@@ -41,3 +41,20 @@ Keys will not fix either. Open an AWS Support case (Support Center, Create case,
 Startup time (API return, READY, first CDP command, with a profile attached), whether saving to the same profile
 twice overwrites it ("profiles are immutable" in the console), what survives (cookies, session cookies,
 localStorage, sessionStorage, IndexedDB), reconnect after a client disconnect, and 20 concurrent sessions.
+
+## Browserbase provider (branch `browserbase-poc`)
+
+`PROVIDER=browserbase` swaps AgentCore for Browserbase. Put `BROWSERBASE_API_KEY` and `BROWSERBASE_PROJECT_ID` in the
+repo-root `.env` (git-ignored). Run: `PROVIDER=browserbase docker compose up --build`, UI at http://localhost:8100.
+
+| | AgentCore | Browserbase |
+|---|---|---|
+| Saved logins | profile saved from a running session | context attached at start, written when the session ends |
+| Agent connection | SigV4-signed WebSocket headers (5 min) | one `connectUrl`, no headers |
+| Live view | DCV stream (our viewer page) | Browserbase page in an iframe |
+| Hide agent while typing secrets | `UpdateBrowserStream` | not available: the agent's pause gate stops it; recording is off |
+
+Live check (uses real quota): `tests/live_browserbase.py` opens a session, sets a cookie and localStorage, releases,
+reopens and confirms both came back (PASS on 2026-10-07; open about 3 s, release about 4 s).
+Notes: `keepAlive` is on (otherwise the session ends when the last CDP client disconnects); contexts must be created
+before the session, which the control plane does on first open; wait for the session to close before reopening.

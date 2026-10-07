@@ -93,6 +93,11 @@ class SessionService:
                 self.active.pop(user, None)
                 self.store.delete_active(user)
             pid = rec.get("profile_id")
+            restored = bool(pid)
+            if not pid and self.p.profile_at_start:             # Browserbase: the context must exist before the session does
+                pid = self.p.create_profile(f"{user}_p")
+                rec["profile_id"] = pid
+                self.store.put(user, rec)
             try:
                 info = self.p.start_session(user, pid, self.session_timeout_s, self.viewport)
             except ProviderError:
@@ -100,15 +105,18 @@ class SessionService:
                     raise
                 # the saved profile is unusable: start clean rather than refuse to open, and say so
                 rec.update(profile_id=None, profile_error="saved profile could not be loaded")
+                pid, restored = None, False
+                if self.p.profile_at_start:
+                    pid = self.p.create_profile(f"{user}_p")
+                    rec["profile_id"] = pid
                 self.store.put(user, rec)
-                pid = None
-                info = self.p.start_session(user, None, self.session_timeout_s, self.viewport)
+                info = self.p.start_session(user, pid, self.session_timeout_s, self.viewport)
             self.p.wait_ready(info)
             now = self.mono()
             a = Active(user, info, last_seen=now, last_saved=now)
             self.active[user] = a
             self._persist(a)
-            return self._summary(a, restored=bool(pid), reused=False)
+            return self._summary(a, restored=restored, reused=False)
 
     def _summary(self, a: Active, restored: bool, reused: bool) -> dict:
         return {"user": a.user, "session_id": a.info.session_id, "restored": restored, "reused": reused,

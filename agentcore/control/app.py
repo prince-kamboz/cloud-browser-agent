@@ -42,6 +42,10 @@ def make_service() -> SessionService:
         from agentcore.provider.fake import FakeProvider
         provider = FakeProvider(time.time, profile_mode=os.getenv("FAKE_PROFILE_MODE", "overwrite"),
                                 max_profiles=int(os.getenv("FAKE_MAX_PROFILES", "100")))
+    elif kind == "browserbase":
+        from agentcore.provider.browserbase import BrowserbaseProvider
+        provider = BrowserbaseProvider(os.getenv("BROWSERBASE_API_KEY", ""), os.getenv("BROWSERBASE_PROJECT_ID", ""),
+                                       region=os.getenv("BROWSERBASE_REGION") or None)
     else:
         from agentcore.provider.agentcore import AgentCoreProvider
         provider = AgentCoreProvider(region=os.getenv("AWS_REGION", os.getenv("AWS_DEFAULT_REGION", "us-east-1")),
@@ -49,7 +53,7 @@ def make_service() -> SessionService:
     return SessionService(
         provider, SqliteStore(os.getenv("STATE_DB", "state.db")),
         idle_after_s=float(os.getenv("IDLE_AFTER_S", "120")), save_every_s=float(os.getenv("SAVE_EVERY_S", "60")),
-        session_timeout_s=int(os.getenv("SESSION_TIMEOUT_S", "3600")), strategy=os.getenv("PROFILE_STRATEGY", "rotate"))
+        session_timeout_s=int(os.getenv("SESSION_TIMEOUT_S", "3600")), strategy=os.getenv("PROFILE_STRATEGY") or ("overwrite" if kind == "browserbase" else "rotate"))
 
 
 svc = make_service()

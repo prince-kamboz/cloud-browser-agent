@@ -34,6 +34,10 @@ class SessionInfo:
 
 
 class BrowserProvider(abc.ABC):
+    # True when a profile must be attached at session start and is written when the session closes (Browserbase contexts).
+    # False when a profile is created and saved from a running session (AgentCore).
+    profile_at_start = False
+
     # --- sessions
     @abc.abstractmethod
     def start_session(self, user_id: str, profile_id: Optional[str] = None, timeout_s: int = 3600,
