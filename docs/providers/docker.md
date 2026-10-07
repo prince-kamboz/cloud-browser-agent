@@ -12,6 +12,8 @@ Good for development, demos and anywhere browsing must stay on your own hardware
 | Hide the agent while typing secrets | not available; the agent's pause gate stops it |
 | Status | **Verified live:** open about 0.5 s, release about 1.2 s, cookies, localStorage and the open tab survive a release and reopen; a two-tab agent task ran end to end |
 
+![A two-tab task running on the Docker provider](../images/02-agent-working.png)
+
 ## Set up
 
 Only Docker and an OpenAI key (`OPENAI_API_KEY` in the repo-root `.env`) are needed.

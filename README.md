@@ -18,6 +18,26 @@ You choose where the browser runs, with one setting:
                                  Agent service (Deep Agents + OpenAI) ── Playwright MCP ──┘
 ```
 
+## Screenshots
+
+Taken from the real UI running on the Docker provider (`cloud_browser_agent/dev/take_screenshots.sh` regenerates them).
+
+**The agent works in the browser panel.** The blue frame means the agent is in control; the tab it is using is the active one.
+![The browser panel with two tabs while the agent works](docs/images/02-agent-working.png)
+
+**Take over.** Press *Take over* and the agent pauses (green frame); *Hand back to agent* resumes it. Typing a message is blocked while you have control.
+![The browser panel in take-over mode with the Hacker News front page](docs/images/03-take-over.png)
+
+**Chat first.** When the panel is minimized the browser is a small live card on the right, and the agent's answer is in the chat.
+![Chat with the agent's answer table and the live browser card](docs/images/05-card-answer.png)
+
+<details><summary>More: the start screen and the finished task</summary>
+
+![The start screen: just the chat](docs/images/01-start.png)
+![The panel after the task finished](docs/images/04-panel-done.png)
+
+</details>
+
 ## What you get
 
 - **Chat first.** The conversation is the main view. The browser appears as a small live card on the right; click it to open a
