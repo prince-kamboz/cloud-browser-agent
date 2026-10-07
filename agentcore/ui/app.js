@@ -207,3 +207,47 @@ setState('none');
 els.live.src = 'about:blank';
 api('/api/config').then((c) => { cfg = c; }).catch(() => addMsg('error', 'The control plane is not reachable.'));
 fetch(agent('/health')).then((r) => r.json()).then((h) => { if (!h.key_set) addMsg('system', 'The agent service has no OPENAI_API_KEY, so chat will not work.'); }).catch(() => {});
+
+// ---------------------------------------------------------------- tab strip (for backends whose live view shows one page)
+const tabsUi = { known: new Set(), active: null, sig: '', sid: null, busy: false };
+async function pollTabs() {
+  const row = $('tabrow'), strip = $('tabstrip');
+  if (!session) { row.hidden = true; tabsUi.known.clear(); tabsUi.active = null; tabsUi.sig = ''; tabsUi.sid = null; return; }
+  if (tabsUi.busy) return;
+  tabsUi.busy = true;
+  try {
+    const r = await api(`/api/sessions/${session.user}/tabs`);
+    if (!r.supported) { row.hidden = true; return; }
+    if (tabsUi.sid !== session.session_id) { tabsUi.sid = session.session_id; tabsUi.known.clear(); tabsUi.active = null; }
+    const tabs = r.tabs, ids = tabs.map((t) => t.id);
+    const fresh = tabs.filter((t) => !tabsUi.known.has(t.id));
+    let want = tabsUi.active;
+    if (tabsUi.known.size && fresh.length) want = fresh[fresh.length - 1].id;      // a page opened (agent or link): follow it
+    if (!ids.includes(want)) want = ids[0] || null;
+    tabs.forEach((t) => tabsUi.known.add(t.id));
+    const changed = want !== tabsUi.active;
+    tabsUi.active = want;
+    const sig = JSON.stringify([want, tabs.map((t) => [t.id, t.title])]);
+    if (sig !== tabsUi.sig) { tabsUi.sig = sig; renderTabs(strip, tabs); }
+    row.hidden = false;
+    if (changed && want) els.live.src = tabs.find((t) => t.id === want).view_url;
+  } catch { /* transient: next poll retries */ } finally { tabsUi.busy = false; }
+}
+function renderTabs(strip, tabs) {
+  strip.textContent = '';
+  for (const t of tabs) {
+    const d = document.createElement('div'); d.className = 'tab' + (t.id === tabsUi.active ? ' active' : ''); d.title = t.url;
+    const title = document.createElement('span'); title.className = 't'; title.textContent = t.title || 'New tab';
+    const x = document.createElement('span'); x.className = 'x'; x.textContent = '×'; x.title = 'Close tab';
+    d.append(title, x);
+    d.onclick = (e) => {
+      if (e.target === x) { api(`/api/sessions/${session.user}/tabs/${encodeURIComponent(t.id)}`, { method: 'DELETE' }).then(pollTabs).catch((er) => addMsg('error', er.message)); return; }
+      tabsUi.active = t.id; tabsUi.sig = ''; els.live.src = t.view_url; renderTabs(strip, tabs);
+    };
+    strip.append(d);
+  }
+  const add = document.createElement('div'); add.className = 'tab add'; add.textContent = '+'; add.title = 'New tab';
+  add.onclick = () => api(`/api/sessions/${session.user}/tabs`, { method: 'POST', body: JSON.stringify({ url: 'about:blank' }) }).then(pollTabs).catch((er) => addMsg('error', er.message));
+  strip.append(add);
+}
+setInterval(pollTabs, 2000);

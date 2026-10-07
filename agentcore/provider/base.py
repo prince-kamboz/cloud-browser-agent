@@ -66,6 +66,17 @@ class BrowserProvider(abc.ABC):
     def set_automation_enabled(self, session: SessionInfo, enabled: bool) -> None:
         """Switch the agent's automation stream off while the user types secrets, on again after."""
 
+    # --- tabs (optional: a backend whose live view shows one page at a time lets the UI draw its own tab strip)
+    def tabs(self, session: SessionInfo):
+        """[{id, title, url, view_url}] or None when the backend's live view already has tabs."""
+        return None
+
+    def open_tab(self, session: SessionInfo, url: str = "about:blank") -> None:
+        raise ProviderError("this backend does not support opening tabs from the control plane")
+
+    def close_tab(self, session: SessionInfo, tab_id: str) -> None:
+        raise ProviderError("this backend does not support closing tabs from the control plane")
+
     # --- profiles (persisted cookies + local storage)
     @abc.abstractmethod
     def create_profile(self, name: str) -> str: ...

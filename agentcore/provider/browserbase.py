@@ -133,6 +133,34 @@ class BrowserbaseProvider(BrowserProvider):
     def set_automation_enabled(self, session, enabled: bool) -> None:
         return None      # not supported; see module docstring
 
+    # ------------------------------------------------------------------------------------------- tabs
+    # Browserbase's live view shows ONE page; /debug lists every page with its own live-view URL, so our UI draws the tabs.
+    def tabs(self, session):
+        r = self._call("GET", f"/sessions/{session.session_id}/debug")
+        return [{"id": p["id"], "title": p.get("title") or p.get("url") or "New tab", "url": p.get("url", ""),
+                 "view_url": p.get("debuggerFullscreenUrl") or p.get("debuggerUrl", "")} for p in r.get("pages", [])]
+
+    def _cdp(self, session, method: str, params: dict):
+        from websockets.sync.client import connect          # one short-lived browser-level CDP call
+        url, _ = self.automation_connection(session)
+        try:
+            with connect(url, max_size=None, open_timeout=15) as ws:
+                ws.send(json.dumps({"id": 1, "method": method, "params": params}))
+                while True:
+                    m = json.loads(ws.recv(timeout=15))
+                    if m.get("id") == 1:
+                        if "error" in m:
+                            raise ProviderError(f"{method}: {m['error'].get('message')}")
+                        return m.get("result", {})
+        except (OSError, TimeoutError) as e:
+            raise ProviderError(f"{method} failed: {e}") from e
+
+    def open_tab(self, session, url="about:blank") -> None:
+        self._cdp(session, "Target.createTarget", {"url": url})
+
+    def close_tab(self, session, tab_id: str) -> None:
+        self._cdp(session, "Target.closeTarget", {"targetId": tab_id})
+
     # --------------------------------------------------------------------------------------- profiles
     def create_profile(self, name: str) -> str:
         return self._call("POST", "/contexts", {"projectId": self.project_id})["id"]

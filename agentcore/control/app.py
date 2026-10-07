@@ -141,6 +141,38 @@ def live_view(user: str):
         raise HTTPException(404, "no active session")
 
 
+class TabReq(BaseModel):
+    url: str = "about:blank"
+
+
+def _tab_call(user: str, fn):
+    try:
+        u = user_of(user)
+        return fn(svc.active[u].info)
+    except KeyError:
+        raise HTTPException(404, "no active session")
+    except ProviderError as e:
+        raise HTTPException(502, str(e))
+
+
+@app.get("/api/sessions/{user}/tabs")
+def list_tabs(user: str):
+    tabs = _tab_call(user, svc.p.tabs)
+    return {"supported": tabs is not None, "tabs": tabs or []}
+
+
+@app.post("/api/sessions/{user}/tabs")
+def new_tab(user: str, req: TabReq):
+    _tab_call(user, lambda info: svc.p.open_tab(info, req.url))
+    return {"ok": True}
+
+
+@app.delete("/api/sessions/{user}/tabs/{tab_id}")
+def close_tab(user: str, tab_id: str):
+    _tab_call(user, lambda info: svc.p.close_tab(info, tab_id))
+    return {"ok": True}
+
+
 @app.post("/api/sessions/{user}/heartbeat")
 def heartbeat(user: str):
     r = svc.heartbeat(user_of(user))
