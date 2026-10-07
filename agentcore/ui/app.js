@@ -62,7 +62,8 @@ function onEvent(ev) {
   else if (ev.type === 'thinking') addMsg('thinking tech', ev.text);
   else if (ev.type === 'error') {
     if (/^(browser_\w+|look): /.test(ev.text)) addMsg('error tech', ev.text); else addMsg('error', ev.text.split('\n')[0].slice(0, 220));
-  } else if (ev.type === 'stopped') addMsg('system', 'Stopped.');
+  } else if (ev.type === 'agent_tab') followAgentTab(ev);
+  else if (ev.type === 'stopped') addMsg('system', 'Stopped.');
 }
 $('detailsBtn').onclick = () => {
   const on = document.body.classList.toggle('show-tech');
@@ -209,7 +210,17 @@ api('/api/config').then((c) => { cfg = c; }).catch(() => addMsg('error', 'The co
 fetch(agent('/health')).then((r) => r.json()).then((h) => { if (!h.key_set) addMsg('system', 'The agent service has no OPENAI_API_KEY, so chat will not work.'); }).catch(() => {});
 
 // ---------------------------------------------------------------- tab strip (for backends whose live view shows one page)
-const tabsUi = { known: new Set(), active: null, sig: '', sid: null, busy: false };
+const tabsUi = { known: new Set(), active: null, sig: '', sid: null, busy: false, list: [], follow: null };
+const norm = (u) => (u || '').replace(/#.*$/, '').replace(/\/$/, '');
+const findTab = (ev) => tabsUi.list.find((t) => norm(t.url) === norm(ev.url)) || tabsUi.list.find((t) => ev.title && t.title === ev.title);
+function followAgentTab(ev) {                      // the tab the agent is working in is always the one on screen
+  const t = findTab(ev);
+  if (t) selectTab(t); else tabsUi.follow = ev;     // not listed yet: the next poll applies it
+}
+function selectTab(t) {
+  if (tabsUi.active === t.id) return;
+  tabsUi.active = t.id; tabsUi.sig = ''; els.live.src = t.view_url; renderTabs($('tabstrip'), tabsUi.list);
+}
 async function pollTabs() {
   const row = $('tabrow'), strip = $('tabstrip');
   if (!session) { row.hidden = true; tabsUi.known.clear(); tabsUi.active = null; tabsUi.sig = ''; tabsUi.sid = null; return; }
@@ -220,9 +231,11 @@ async function pollTabs() {
     if (!r.supported) { row.hidden = true; return; }
     if (tabsUi.sid !== session.session_id) { tabsUi.sid = session.session_id; tabsUi.known.clear(); tabsUi.active = null; }
     const tabs = r.tabs, ids = tabs.map((t) => t.id);
+    tabsUi.list = tabs;
     const fresh = tabs.filter((t) => !tabsUi.known.has(t.id));
     let want = tabsUi.active;
     if (tabsUi.known.size && fresh.length) want = fresh[fresh.length - 1].id;      // a page opened (agent or link): follow it
+    if (tabsUi.follow) { const f = findTab(tabsUi.follow); if (f) { want = f.id; tabsUi.follow = null; } }
     if (!ids.includes(want)) want = ids[0] || null;
     tabs.forEach((t) => tabsUi.known.add(t.id));
     const changed = want !== tabsUi.active;
@@ -242,7 +255,7 @@ function renderTabs(strip, tabs) {
     d.append(title, x);
     d.onclick = (e) => {
       if (e.target === x) { api(`/api/sessions/${session.user}/tabs/${encodeURIComponent(t.id)}`, { method: 'DELETE' }).then(pollTabs).catch((er) => addMsg('error', er.message)); return; }
-      tabsUi.active = t.id; tabsUi.sig = ''; els.live.src = t.view_url; renderTabs(strip, tabs);
+      selectTab(t);
     };
     strip.append(d);
   }

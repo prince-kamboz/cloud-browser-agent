@@ -64,3 +64,16 @@ class GateTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CurrentTabTests(unittest.TestCase):
+    def test_current_tab_is_read_from_the_tab_list(self):
+        try:
+            from agentcore.agent.events import current_tab
+        except ImportError:
+            self.skipTest("langchain/mcp not installed")
+        text = "### Open tabs\n- 0: [Hacker News](https://news.ycombinator.com/)\n- 1: (current) [Example Domain](https://example.com/)\n"
+        self.assertEqual(current_tab(text), {"type": "agent_tab", "title": "Example Domain", "url": "https://example.com/"})
+        self.assertIsNone(current_tab("### Open tabs\n- 0: [A](https://a.example/)"))
+        self.assertEqual(current_tab("- 2: (current) [A [b]](https://a.example/x?y=1) [crashed]")["url"], "https://a.example/x?y=1")
+        self.assertIsNone(current_tab(""))

@@ -121,7 +121,7 @@ def open_session(req: OpenReq):
         r["viewer_url"] = viewer_url(r["live_view_url"], r["viewport"])
         return r
     except QuotaExceeded as e:
-        raise HTTPException(503, f"AWS account quota reached: {e}")
+        raise HTTPException(503, f"Browser quota reached: {e}")
     except ProviderError as e:
         raise HTTPException(502, str(e))
 
