@@ -124,6 +124,7 @@ async function openBrowser() {
     setState('ready');
     addMsg('system tech', `Browser ${r.reused ? 'reused' : 'started'}${r.restored ? ' with saved logins' : ''}.`);
     if (r.restored) addMsg('system', 'Browser opened with your saved logins.');
+    if (r.profile_warning) addMsg('error', r.profile_warning);
     return true;
   } catch (e) {
     addMsg('error', e.message); setState('none'); return false;

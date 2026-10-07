@@ -3,6 +3,7 @@ import unittest
 
 from cloud_browser_agent.control.core import SessionService
 from cloud_browser_agent.control.store import SqliteStore
+from cloud_browser_agent.provider.base import ProviderError, QuotaExceeded
 from cloud_browser_agent.provider.fake import FakeProvider
 
 
@@ -16,6 +17,8 @@ def make(mode="overwrite", strategy="overwrite", max_profiles=100, **kw):
     clock = Clock()
     p = FakeProvider(clock, profile_mode=mode, max_profiles=max_profiles)
     svc = SessionService(p, SqliteStore(), clock=clock, strategy=strategy, **kw)
+    svc.sleeps = []
+    svc.sleep = svc.sleeps.append                        # retries wait on the fake clock, not for real
     return clock, p, svc
 
 
@@ -156,6 +159,65 @@ class LifecycleTests(unittest.TestCase):
         r = svc.open("alice")
         self.assertFalse(r["restored"])
         self.assertIn("profile_error", svc.store.get("alice"))
+
+
+class SavedProfileLoadTests(unittest.TestCase):
+    """A saved profile that fails to load must not silently cost the user their logins."""
+
+    def saved_user(self):
+        clock, p, svc = make()
+        svc.open("alice"); login(p, svc, "alice", "A"); svc.release("alice")
+        return clock, p, svc, svc.store.get("alice")["profile_id"]
+
+    def fail_starts_with(self, p, profile_id, times):
+        real, left = p.start_session, [times]
+        def start(user_id, pid=None, *a, **k):
+            if pid == profile_id and left[0] > 0:
+                left[0] -= 1
+                raise ProviderError("profile is in use by another session")
+            return real(user_id, pid, *a, **k)
+        p.start_session = start
+
+    def test_a_busy_profile_is_retried_and_the_logins_come_back(self):
+        clock, p, svc, pid = self.saved_user()
+        self.fail_starts_with(p, pid, times=2)                # e.g. the previous session is still winding down
+        r = svc.open("alice")
+        self.assertTrue(r["restored"])
+        self.assertNotIn("profile_warning", r)
+        self.assertEqual(svc.sleeps, [1.0, 3.0])              # waited between the attempts
+        self.assertEqual(svc.store.get("alice")["profile_id"], pid)
+        self.assertEqual(p.browser_state(svc.active["alice"].info)["cookies"], {"sid": "A"})
+
+    def test_a_profile_that_never_loads_is_kept_not_dropped(self):
+        clock, p, svc, pid = self.saved_user()
+        self.fail_starts_with(p, pid, times=99)
+        r = svc.open("alice")
+        self.assertFalse(r["restored"])
+        self.assertIn("kept", r["profile_warning"])           # the user is told
+        rec = svc.store.get("alice")
+        self.assertEqual(rec["kept_profiles"], [pid])         # the old pointer is remembered
+        self.assertIn(pid, p.profiles)                        # and the profile itself was not deleted
+        svc.forget("alice")                                   # "forget logins" still removes everything
+        self.assertNotIn(pid, p.profiles)
+
+    def test_a_quota_error_never_replaces_the_saved_profile(self):
+        clock, p, svc, pid = self.saved_user()
+        real = p.start_session
+        def start(user_id, pid_=None, *a, **k):
+            raise QuotaExceeded("maxBrowserSessions limit exceeded")
+        p.start_session = start
+        with self.assertRaises(QuotaExceeded):
+            svc.open("alice")
+        self.assertEqual(svc.store.get("alice")["profile_id"], pid)
+        self.assertEqual(svc.sleeps, [])                      # no pointless retries on a quota error
+        p.start_session = real
+        self.assertTrue(svc.open("alice")["restored"])
+
+    def test_the_warning_is_cleared_once_a_profile_loads_again(self):
+        clock, p, svc, pid = self.saved_user()
+        rec = svc.store.get("alice"); rec["profile_error"] = "old warning"; svc.store.put("alice", rec)
+        self.assertTrue(svc.open("alice")["restored"])
+        self.assertNotIn("profile_error", svc.store.get("alice"))
 
 
 if __name__ == "__main__":

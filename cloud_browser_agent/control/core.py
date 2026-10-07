@@ -42,6 +42,8 @@ class SessionService:
         self.mono = mono or (time.monotonic if clock is time.time else clock)
         self.idle_after_s, self.save_every_s, self.session_timeout_s = idle_after_s, save_every_s, session_timeout_s
         self.strategy, self.viewport = strategy, viewport
+        self.profile_retry_waits = (1.0, 3.0)        # seconds to wait between attempts to start with a saved profile
+        self.sleep = time.sleep
         self.active: Dict[str, Active] = {}
         self._locks: Dict[str, threading.RLock] = {}
         self._meta = threading.Lock()
@@ -93,7 +95,7 @@ class SessionService:
                 self.active.pop(user, None)
                 self.store.delete_active(user)
             pid = rec.get("profile_id")
-            restored = bool(pid)
+            restored, warning = bool(pid), None
             fresh_profile = False
             if not pid and self.p.profile_at_start:             # Browserbase / Docker: the profile must exist before the session does
                 pid = self.p.create_profile(f"{user}_p")
@@ -101,32 +103,67 @@ class SessionService:
                 rec["profile_id"] = pid
                 self.store.put(user, rec)
             try:
-                info = self.p.start_session(user, pid, self.session_timeout_s, self.viewport)
-            except ProviderError:
-                if fresh_profile:                               # nothing was saved in it yet: do not leak it (it counts against quotas)
+                info = self._start(user, pid, retry=bool(pid) and not fresh_profile)
+            except QuotaExceeded:
+                self._discard_fresh(user, rec, pid, fresh_profile)
+                raise                                           # a quota is not a profile problem: never replace the saved logins for it
+            except ProviderError as e:
+                self._discard_fresh(user, rec, pid, fresh_profile)
+                if fresh_profile or not pid:
+                    raise
+                # The saved profile would not load even after retries. Open a clean browser rather than refuse, but KEEP the
+                # old profile (it may only have been busy) so the logins are not lost: forget() still deletes it.
+                new = self.p.create_profile(f"{user}_p") if self.p.profile_at_start else None
+                try:
+                    info = self.p.start_session(user, new, self.session_timeout_s, self.viewport)
+                except ProviderError:
+                    if new:
+                        try:
+                            self.p.delete_profile(new)
+                        except ProviderError:
+                            pass
+                    raise
+                warning = f"Your saved logins could not be loaded ({e}). Opened a clean browser; the saved logins were kept."
+                rec.setdefault("kept_profiles", []).append(pid)
+                rec.update(profile_id=new, profile_error=warning, profile_error_at=self.clock())
+                if not new:
                     rec.pop("profile_id", None)
-                    self.store.put(user, rec)
-                    try:
-                        self.p.delete_profile(pid)
-                    except ProviderError:
-                        pass
-                    raise
-                if not pid:
-                    raise
-                # the saved profile is unusable: start clean rather than refuse to open, and say so
-                rec.update(profile_id=None, profile_error="saved profile could not be loaded")
-                pid, restored = None, False
-                if self.p.profile_at_start:
-                    pid = self.p.create_profile(f"{user}_p")
-                    rec["profile_id"] = pid
                 self.store.put(user, rec)
-                info = self.p.start_session(user, pid, self.session_timeout_s, self.viewport)
+                pid, restored = new, False
+            if restored and rec.pop("profile_error", None):     # it loaded this time: the old warning is stale
+                rec.pop("profile_error_at", None)
+                self.store.put(user, rec)
             self.p.wait_ready(info)
             now = self.mono()
             a = Active(user, info, last_seen=now, last_saved=now)
             self.active[user] = a
             self._persist(a)
-            return self._summary(a, restored=restored, reused=False)
+            out = self._summary(a, restored=restored, reused=False)
+            if warning:
+                out["profile_warning"] = warning
+            return out
+
+    def _start(self, user: str, pid, retry: bool):
+        """Start a session; with a saved profile, retry a few times first (it may still be locked by the session that just closed)."""
+        waits = list(self.profile_retry_waits) if retry else []
+        while True:
+            try:
+                return self.p.start_session(user, pid, self.session_timeout_s, self.viewport)
+            except QuotaExceeded:
+                raise
+            except ProviderError:
+                if not waits:
+                    raise
+                self.sleep(waits.pop(0))
+
+    def _discard_fresh(self, user: str, rec: dict, pid, fresh_profile: bool) -> None:
+        if fresh_profile:                                       # nothing was saved in it yet: do not leak it (it counts against quotas)
+            rec.pop("profile_id", None)
+            self.store.put(user, rec)
+            try:
+                self.p.delete_profile(pid)
+            except ProviderError:
+                pass
 
     def _summary(self, a: Active, restored: bool, reused: bool) -> dict:
         return {"user": a.user, "session_id": a.info.session_id, "restored": restored, "reused": reused,
@@ -256,8 +293,8 @@ class SessionService:
             if user in self.active:
                 self.release(user, save=False)
             rec = self.store.get(user)
-            if rec.get("profile_id"):
-                self.p.delete_profile(rec["profile_id"])
+            for pid in ([rec["profile_id"]] if rec.get("profile_id") else []) + list(rec.get("kept_profiles", [])):
+                self.p.delete_profile(pid)
             self.store.delete(user)
 
     def status(self) -> dict:
