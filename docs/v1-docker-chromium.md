@@ -1,4 +1,7 @@
-# Browser Agent POC (OpenAI computer use + Docker browser)
+# v1: Docker Chromium + Deep Agents (original POC)
+
+> This is the original v1 write-up. It lives on `main`; the newer versions are described in the [root README](../README.md).
+> Commands below are run from the repo root on the `main` branch.
 
 A chat agent in your browser that controls a **real Chromium running in Docker** and shows it live inside the page, like ChatGPT agent.
 There's no custom backend: the whole agent is plain HTML/JS. Docker only runs off-the-shelf parts (headless Chromium, nginx).
