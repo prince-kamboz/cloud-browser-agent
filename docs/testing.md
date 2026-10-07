@@ -7,7 +7,7 @@ Everything runs in Docker; nothing is installed on your machine.
 ```bash
 cloud_browser_agent/tests/run_unit_tests.sh
 ```
-70 tests: lifecycle logic, SQLite, request shapes and signing, the Docker and Browserbase providers against fakes, the agent's
+77 tests: lifecycle logic, SQLite, request shapes and signing, the Docker and Browserbase providers against fakes, the agent's
 config files and tab parsing. Add `TAIL=200` to see every test name.
 
 ## 2. Live lifecycle check against a real backend
@@ -77,6 +77,9 @@ Run these with any provider (Browserbase's free plan allows one browser at a tim
 | Switch to another window for 30 s and back | the strip refreshes on return; no polling while hidden |
 | Click **+**, a tab, then **x** | a new tab opens, becomes active, then closes |
 | Leave the page open for 3 minutes | the browser is still there (the heartbeat keeps it alive) |
+| Start a task, press **Take over**, then reload the page and click **Open browser** | the page shows "You are in control (agent paused)"; the task stays paused |
+| While in control, type a message and press Enter | it is not sent; a note says to hand the browser back first |
+| Press **Hand back to agent** | the agent continues the same task |
 | Click the card, then expand, then X | card -> panel -> full window -> card |
 | **Forget logins**, then open again | the saved login is gone |
 

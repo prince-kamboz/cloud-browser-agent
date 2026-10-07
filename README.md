@@ -25,7 +25,8 @@ You choose where the browser runs, with one setting:
 - **Watch and take over.** See the real page, click and type in it, press **Take over** to pause the agent, **Hand back** to
   resume. **Private input** is for typing passwords yourself.
 - **Real tabs.** A tab strip you can use (open, switch, close); the tab the agent is working in is always the active one.
-- **Saved logins per user.** Close the browser and open it again: cookies, localStorage and open tabs are back.
+- **Saved logins per user.** Close the browser and open it again: cookies, localStorage and open tabs are back. If a saved profile
+  will not load, it is retried, and if it still fails a clean browser opens and the old profile is kept, not discarded.
 - **One browser per user**, released automatically after 2 minutes without a heartbeat (logins saved first).
 - **A capable agent.** Deep Agents with a browser subagent over Playwright MCP, accessibility snapshots first and a vision
   tool only when the page text is not enough. OpenAI models for both.
@@ -112,7 +113,7 @@ run.sh                    start or stop the system with the provider of your cho
 ## Testing
 
 ```bash
-cloud_browser_agent/tests/run_unit_tests.sh         # 70 tests, a few seconds, no accounts
+cloud_browser_agent/tests/run_unit_tests.sh         # 77 tests, a few seconds, no accounts
 cloud_browser_agent/tests/run_live.sh docker         # real open -> cookie -> release -> reopen check
 cloud_browser_agent/bench/run_bench.sh --runs 5 --providers browserbase browseruse docker   # compare providers
 ```
@@ -126,7 +127,7 @@ More in [docs/testing.md](docs/testing.md).
 | Browserbase provider | verified live (lifecycle, saved logins, tabs, agent task) |
 | Browser Use provider | verified live (lifecycle, saved logins, benchmark); live view is slow to update and shows its own tab bar |
 | AgentCore provider | built and unit-tested; a live run was blocked by the test account's zero quotas |
-| Known gaps | a saved profile that fails to load is replaced rather than retried; "Take over" resumes if you send a message; no website approvals or cookie vault (they exist in `legacy/v1`) |
+| Known gaps | no website approvals or cookie vault (they exist in `legacy/v1`); Browser Use's live view is slow to update |
 | User authentication | not built |
 
 ## Security
@@ -147,4 +148,5 @@ authentication and drop the socket (or isolate it) before exposing this anywhere
 | Live view is black for a few seconds | normal while it connects |
 | Browser Use live view reacts 4 to 8 seconds late | known; it is Browser Use's viewer, not the browser (see [its guide](docs/providers/browseruse.md)) |
 | "the agent is already working on a task" | a task is still running for that user: press **Stop** in the chat |
+| Message refused: "You have control of the browser" | press **Hand back to agent** first; Take over holds until you do |
 | Chat says it lost the connection to the agent | the agent service is not running: `docker compose ps` |

@@ -101,11 +101,16 @@ all while the page is hidden.
 - Browser Use browsers keep running (and billing) after a dropped connection; they must be stopped through the API.
 - A Browserbase context attached after the session starts saves nothing; it must exist first.
 - A profile created for a session that then failed to start leaked; now removed.
+- A saved profile that failed to load was dropped at once and replaced. Now it is retried (1 s, 3 s), a quota error never replaces it, and if it
+  still fails a clean browser opens, the old profile is kept in `kept_profiles` and the user is told.
+- "Take over" ended by itself: after a reload the UI forgot a task was running, the server rejected the next message, and the UI's cleanup
+  resumed the agent. Now the agent service rejects a message while a task runs or the user has control (`busy` / `paused`) without touching
+  the gate, and the UI re-syncs running / paused from the agent service.
+- Saved-profile ids are only valid for the provider that made them, so each provider has its own state file (`state-<provider>.db`).
 
 ## Not built yet
 
 1. Website approvals and the cookie backup/vault in this version (v1 has them).
 2. User authentication.
 3. Our own provider-independent backup of cookies/localStorage.
-   (Also: when a saved profile fails to load on reopen, the control plane starts a fresh one and drops the old pointer; it should retry and keep the old profile.)
 4. A live test of AgentCore (the test AWS account's quotas were zero) and of the real DCV stream.
