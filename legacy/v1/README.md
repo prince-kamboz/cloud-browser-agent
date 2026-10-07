@@ -1,7 +1,7 @@
 # v1: Docker Chromium + Deep Agents (original POC)
 
-> This is the original v1 write-up. It lives on `main`; the newer versions are described in the [root README](../README.md).
-> Commands below are run from the repo root on the `main` branch.
+> This is the original v1 app, kept frozen under `legacy/v1/`. The current system is described in the [root README](../../README.md).
+> Run the commands below from this folder (`legacy/v1/`). The OpenAI key is read from the repo-root `.env`.
 
 A chat agent in your browser that controls a **real Chromium running in Docker** and shows it live inside the page, like ChatGPT agent.
 There's no custom backend: the whole agent is plain HTML/JS. Docker only runs off-the-shelf parts (headless Chromium, nginx).

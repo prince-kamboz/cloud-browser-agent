@@ -28,8 +28,8 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 
-BROWSER_IMAGE = os.getenv("BROWSER_IMAGE", "chatgpt-browser-browser-agent")
-AGENT_IMAGE = os.getenv("AGENT_IMAGE", "chatgpt-browser-deepagent")
+BROWSER_IMAGE = os.getenv("BROWSER_IMAGE", "cba-legacy-browser")
+AGENT_IMAGE = os.getenv("AGENT_IMAGE", "cba-legacy-deepagent")
 HOST_WEB_DIR = os.getenv("HOST_WEB_DIR", "")            # absolute path of ./web on the Docker host
 NETWORK = os.getenv("NETWORK", "lifecycle-net")
 PUBLIC_PORT = os.getenv("PUBLIC_PORT", "8090")

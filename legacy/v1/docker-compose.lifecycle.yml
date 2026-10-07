@@ -2,7 +2,7 @@
 #   docker compose -f docker-compose.lifecycle.yml up --build -d
 #   open http://localhost:8090
 # Session containers are created by the manager (not listed here) from the two images below.
-name: lifecycle
+name: cba-legacy-lifecycle
 services:
   traefik:                                   # routes http://s-<id>.localhost:8090 to that session's browser
     image: traefik:v3
@@ -20,9 +20,9 @@ services:
 
   manager:
     build: ./manager
-    container_name: lifecycle-manager
+    container_name: cba-legacy-lifecycle-manager
     env_file:
-      - path: .env
+      - path: ../../.env
         required: false
     environment:
       - HOST_WEB_DIR=${PWD}/web
@@ -30,8 +30,8 @@ services:
       - SUSPEND_AFTER=${SUSPEND_AFTER:-60}
       - RELEASE_AFTER=${RELEASE_AFTER:-180}
       - BYE_GRACE=${BYE_GRACE:-10}
-      - BROWSER_IMAGE=${BROWSER_IMAGE:-chatgpt-browser-browser-agent}
-      - AGENT_IMAGE=${AGENT_IMAGE:-chatgpt-browser-deepagent}
+      - BROWSER_IMAGE=${BROWSER_IMAGE:-cba-legacy-browser}
+      - AGENT_IMAGE=${AGENT_IMAGE:-cba-legacy-deepagent}
       - MAIN_MODEL=${MAIN_MODEL:-gpt-6.1-sol}
       - VISION_MODEL=${VISION_MODEL:-gpt-6.1-sol}
     volumes:
@@ -49,4 +49,4 @@ services:
 
 networks:
   lifecycle-net:
-    name: lifecycle-net
+    name: cba-legacy-lifecycle-net

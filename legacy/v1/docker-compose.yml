@@ -1,6 +1,8 @@
+name: cba-legacy-v1
 services:
   browser-agent:
     build: ./docker
+    image: cba-legacy-browser
     container_name: browser-agent-poc
     # Bound to localhost only: anyone who can reach this port can control the browser.
     ports:
@@ -20,12 +22,13 @@ services:
   # reaches Chromium's CDP on localhost:9222 and nothing new is published. nginx proxies /agent/ to it.
   deepagent:
     build: ./deepagent
+    image: cba-legacy-deepagent
     container_name: deepagent-poc
     network_mode: "service:browser-agent"
     depends_on:
       - browser-agent
     env_file:
-      - path: .env
+      - path: ../../.env
         required: false
     volumes:
       - browser-profile:/data       # the cookie vault lives here, next to the browser profile
