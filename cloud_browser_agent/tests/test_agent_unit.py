@@ -77,3 +77,60 @@ class CurrentTabTests(unittest.TestCase):
         self.assertIsNone(current_tab("### Open tabs\n- 0: [A](https://a.example/)"))
         self.assertEqual(current_tab("- 2: (current) [A [b]](https://a.example/x?y=1) [crashed]")["url"], "https://a.example/x?y=1")
         self.assertIsNone(current_tab(""))
+
+
+class ChatRejectionTests(unittest.IsolatedAsyncioTestCase):
+    """A message that cannot start must never resume a paused agent (the 'Take over ends by itself' bug)."""
+
+    def make(self):
+        try:
+            import asyncio
+            from cloud_browser_agent.agent.connection import StaticSource
+            from cloud_browser_agent.agent.service import AgentService
+        except ImportError:
+            self.skipTest("langchain/mcp not installed")
+        release = asyncio.Event()
+
+        class FakeMcp:
+            alive, ws_url = True, "ws://x"
+            async def start(self, c=None): pass
+            async def stop(self): pass
+
+        class FakeAgent:
+            async def astream(self, *a, **k):
+                await release.wait()
+                return
+                yield
+
+        svc = AgentService(StaticSource("ws://x"), agent_builder=lambda rt: FakeAgent(), mcp_factory=lambda u, g: FakeMcp())
+        return svc, release
+
+    async def first_event(self, svc, user="alice"):
+        async for ev in svc.chat(user, "hi", "t"):
+            return ev
+
+    async def test_a_second_message_while_a_task_runs_is_rejected_and_does_not_resume(self):
+        import asyncio
+        svc, release = self.make()
+        run = asyncio.create_task(self.first_event(svc))        # task 1 starts and waits
+        await asyncio.sleep(0.05)
+        svc.pause("alice")                                        # the user takes over
+        ev = await self.first_event(svc)                          # then sends another message
+        self.assertEqual((ev["type"], ev["code"]), ("error", "busy"))
+        self.assertTrue(svc.runtime("alice").gate.paused)         # still paused: the user keeps control
+        release.set()
+        run.cancel()
+
+    async def test_a_message_while_the_user_has_control_is_rejected_and_stays_paused(self):
+        svc, release = self.make()
+        svc.pause("alice")
+        ev = await self.first_event(svc)
+        self.assertEqual((ev["type"], ev["code"]), ("error", "paused"))
+        self.assertTrue(svc.runtime("alice").gate.paused)
+
+    async def test_a_normal_message_still_starts_a_run_and_clears_the_pause_state(self):
+        svc, release = self.make()
+        release.set()
+        types = [ev["type"] async for ev in svc.chat("alice", "hi", "t")]
+        self.assertEqual(types[-1], "done")
+        self.assertFalse(svc.runtime("alice").gate.paused)

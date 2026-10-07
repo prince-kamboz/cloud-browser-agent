@@ -12,7 +12,7 @@ let cfg = { agent_url: '' };
 let session = null;            // { user, viewer_url, ... } while a browser is open
 let state = 'none';            // none | ready | running | paused
 let privateOn = false;
-let abortRun = null, heartbeat = null, viewerRetries = 0;
+let abortRun = null, heartbeat = null, viewerRetries = 0, rejectedRun = false;
 let threadId = crypto.randomUUID();
 
 const cleanUser = (v) => (v || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 32);
@@ -61,6 +61,7 @@ function onEvent(ev) {
   } else if (ev.type === 'assistant') { lastStep = ''; addMsg('assistant', ev.text); }
   else if (ev.type === 'thinking') addMsg('thinking tech', ev.text);
   else if (ev.type === 'error') {
+    if (ev.code) { rejectedRun = true; addMsg('system', ev.text); return; }   // the server refused the message: nothing started
     if (/^(browser_\w+|look): /.test(ev.text)) addMsg('error tech', ev.text); else addMsg('error', ev.text.split('\n')[0].slice(0, 220));
   } else if (ev.type === 'agent_tab') followAgentTab(ev);
   else if (ev.type === 'stopped') addMsg('system', 'Stopped.');
@@ -104,6 +105,7 @@ function setState(s) {
   els.takeover.classList.toggle('active', s === 'paused'); els.takeover.textContent = s === 'paused' ? 'Hand back to agent' : 'Take over';
   els.priv.hidden = !open || busy;
   els.send.hidden = busy; els.stop.hidden = !busy;
+  els.input.placeholder = s === 'paused' ? 'You have control. Hand the browser back to send a message.' : 'What should the agent do?';
   els.overlay.hidden = !busy;
   els.viewer.classList.toggle('is-mine', s === 'ready' || s === 'paused');
   els.viewer.classList.toggle('is-busy', busy);
@@ -121,7 +123,7 @@ async function openBrowser() {
     try { localStorage.setItem('v2user', user); } catch {}
     els.ended.hidden = true; els.live.src = r.viewer_url; viewerRetries = 0;
     clearInterval(heartbeat); heartbeat = setInterval(beat, 15000);
-    setState('ready');
+    setState('ready'); syncAgent();
     addMsg('system tech', `Browser ${r.reused ? 'reused' : 'started'}${r.restored ? ' with saved logins' : ''}.`);
     if (r.restored) addMsg('system', 'Browser opened with your saved logins.');
     if (r.profile_warning) addMsg('error', r.profile_warning);
@@ -185,11 +187,22 @@ els.takeover.onclick = async () => {
 };
 els.stop.onclick = async () => { if (session) await post(agent('/stop'), { user: session.user }); abortRun?.abort(); };
 
+// ---------------------------------------------------------------- keep the page honest about the agent
+// After a reload the page forgets a task is running (or that you took over). The agent service knows, so ask it.
+async function syncAgent() {
+  if (!session || abortRun) return;                             // while this page streams a task it already knows
+  let u;
+  try { u = ((await (await fetch(agent('/health'))).json()).users || {})[session.user]; } catch { return; }
+  if (u && !u.busy && u.paused) post(agent('/resume'), { user: session.user });   // no task left to hold: clear a stale pause
+  const want = u && u.busy ? (u.paused ? 'paused' : 'running') : 'ready';
+  if (want !== state && (state !== 'none')) setState(want);
+}
+
 // ---------------------------------------------------------------- running a task
 async function runAgent(text) {
   if (!session && !(await openBrowser())) return;
   if (privateOn) await setPrivate(false).catch(() => {});          // the agent needs to see the page again
-  setState('running'); lastStep = ''; abortRun = new AbortController();
+  setState('running'); lastStep = ''; rejectedRun = false; abortRun = new AbortController();
   try {
     const res = await fetch(agent('/chat'), { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ user: session.user, message: text, thread_id: threadId }), signal: abortRun.signal });
@@ -209,13 +222,19 @@ async function runAgent(text) {
     else addMsg('error', e.message);
   } finally {
     abortRun = null;
-    if (session) { setState('ready'); await post(agent('/resume'), { user: session.user }); }   // never leave the agent paused with no task
+    if (rejectedRun) await syncAgent();                       // another task owns the agent: do not touch its pause state
+    else if (session) { setState('ready'); await post(agent('/resume'), { user: session.user }); }   // never leave the agent paused with no task
   }
 }
 els.composer.addEventListener('submit', async (e) => {
   e.preventDefault();
   const text = els.input.value.trim();
   if (!text || abortRun) return;
+  if (state === 'running' || state === 'paused') {          // e.g. after a page reload: a task is still going
+    addMsg('system', state === 'paused' ? 'You have control. Hand the browser back to the agent before sending a message.'
+                                         : 'The agent is still working on a task. Press Stop first, or wait for it to finish.');
+    return;
+  }
   els.input.value = ''; els.input.style.height = 'auto';
   addMsg('user', text); await runAgent(text);
 });
@@ -284,7 +303,7 @@ function renderTabs(strip, tabs) {
 }
 // poll fast only while the agent is working; slowly when idle; not at all while this page is hidden
 (function loop() {
-  if (!document.hidden) pollTabs();
+  if (!document.hidden) { pollTabs(); syncAgent(); }
   setTimeout(loop, abortRun ? 2000 : 8000);
 })();
 document.addEventListener('visibilitychange', () => { if (!document.hidden) pollTabs(); });

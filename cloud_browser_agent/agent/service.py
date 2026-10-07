@@ -75,8 +75,14 @@ class AgentService:
 
     async def chat(self, user: str, message: str, thread_id: str) -> AsyncIterator[dict]:
         rt = self.runtime(user)
+        # A message that cannot start must not touch the run that IS going on: in particular it must never resume the gate,
+        # or "Take over" would silently end the moment the user typed something.
         if rt.lock.locked():
-            yield {"type": "error", "text": "the agent is already working on a task for this user"}
+            yield {"type": "error", "code": "busy", "text": "The agent is already working on a task. Stop it first, or wait for it to finish."}
+            yield {"type": "done"}
+            return
+        if rt.gate.paused:
+            yield {"type": "error", "code": "paused", "text": "You have control of the browser. Hand it back to the agent before sending a message."}
             yield {"type": "done"}
             return
         async with rt.lock:
