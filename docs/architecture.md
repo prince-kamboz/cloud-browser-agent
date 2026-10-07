@@ -1,125 +1,108 @@
-# v2: browser agent on Amazon Bedrock AgentCore Browser
+# Architecture
 
-Branch `cloud-browser-agent`. v1 (self-hosted Chromium in Docker) is on `main`; nothing here depends on it.
-
-## How it works
+Cloud Browser Agent lets a chat agent drive a real browser that the user can watch and take over, with saved logins per
+user. The browser can come from three places (providers) behind one interface.
 
 ```
- User's browser ──(1) open ──► Control plane ──(2) StartBrowserSession(profile) ──► AgentCore Browser
-   (chat + live view)            sessions, locks,                                    one isolated Chromium
-        ▲                        profile pointer,                                    per user session
-        │                        idle reaper                                             │
-        │ (3) live view URL            │ (4) signed CDP endpoint (server side only)      │
-        │  signed, 5 min, DCV          ▼                                                 │
-        └──────────── video ◄──────────────────────────────────────────────────────────┤
-                                  Agent service (Deep Agents + Playwright MCP) ──CDP───┘
-                                  OpenAI main + vision models                    (WebSocket, SigV4)
+ User's browser (chat + live view)
+        │ open / heartbeat / tabs / take over                         live view (iframe)
+        ▼                                                                    ▲
+ ┌───────────────────────────┐  start / stop / profile   ┌─────────────────────────────┐
+ │ Control plane (FastAPI)   │ ────────────────────────► │ Browser provider            │
+ │ sessions, per-user lock,  │                           │  docker      local container │
+ │ autosave, idle reaper,    │ ◄──── connection ──────── │  browserbase hosted browser │
+ │ SQLite state              │                           │  agentcore   AWS browser    │
+ └──────────▲────────────────┘                           └──────────────▲──────────────┘
+            │ connection (token-protected)                              │ CDP (WebSocket)
+ ┌──────────┴────────────────┐                                          │
+ │ Agent service             │ ─────── Playwright MCP ──────────────────┘
+ │ Deep Agents + OpenAI      │
+ └───────────────────────────┘
 ```
 
-1. **Open.** The user starts a browser chat. The control plane takes that user's lock (one browser per user), looks up
-   their saved profile, and calls `StartBrowserSession` with it. AgentCore boots an isolated Chromium in its own microVM
-   with the saved cookies and local storage already loaded.
-2. **Watch and take over.** The control plane returns a *live-view URL*: a SigV4-presigned link, valid 5 minutes, refreshed
-   by the UI. The video stream (Amazon DCV) flows from AWS straight to the user's browser. The user sees the real Chrome
-   window (tabs, address bar) and can click and type in it.
-3. **The agent works.** The agent service asks the control plane for a *signed CDP endpoint* (credentials, so server-side
-   only) and connects Playwright MCP to it. Everything else is as in v1: snapshots first, `look()` vision on demand,
-   approvals before opening sites, Deep Agents orchestration.
-4. **Secrets.** When the user needs to type a password, the control plane switches the agent's automation stream **off**
-   (`UpdateBrowserStream`), so the agent literally cannot see the page, and back on afterwards. Idle release is paused meanwhile.
-5. **Keep it alive.** The UI sends a heartbeat. The control plane autosaves the profile every 60 s (AgentCore only saves
-   when asked) and calls `StopBrowserSession` after 120 s without a heartbeat, saving first.
-6. **Come back.** Next open starts a new session from the saved profile: logins are back. If AWS ended the session by itself
-   (its time limit), only changes since the last autosave are lost.
+Three services run in Docker Compose: **control** (port 8100, also serves the UI), **agent** (8200), and, for the Docker
+provider, one browser container per user session.
 
-### Saving logins: two strategies (an open question)
-The console says profiles "are immutable and cannot be updated once they are created", while the API docs say a second save
-overwrites. We do not know which is true for the data. `PROFILE_STRATEGY=rotate` (default) works either way: each save
-creates a new profile, then the pointer moves and the old one is deleted. `overwrite` is simpler if saves overwrite.
-`bench/step0_bench.py` answers the question; the tests cover both behaviours.
+## The provider interface
 
-## What is built and tested (37 tests, all pass, no AWS needed)
-- `provider/agentcore.py`: the real AgentCore calls and SigV4 signing for the WebSocket and live view. Request shapes and
-  error mapping are tested against fake clients. **Not yet run against a live account.**
-- `provider/fake.py`: simulates AgentCore, including write-once profiles and a zero profile quota (this account today).
-- `control/core.py`: lifecycle logic. `control/store.py`: SQLite. `control/app.py`: HTTP API. `Dockerfile` + `docker-compose.yml`: runnable control plane.
-- `bench/step0_bench.py`: the live benchmark, ready for when quotas allow.
+`cloud_browser_agent/provider/base.py` is everything the control plane needs from a browser backend:
 
-## Agent connection (built, tested against a local Chromium)
-`agent/` is the v2 agent service: the same Deep Agents setup as v1 (coordinator + browser subagent + `look()` vision tool),
-but the browser is remote. Per user it keeps one Playwright MCP process connected to that user's browser:
-- The signed address comes from the control plane (`ControlPlaneSource`) or a fixed one (`StaticSource`, for tests).
-- Playwright MCP gets the signed headers through a 0600 config file (`browser.cdpHeaders`), never the command line, and
-  the file is deleted as soon as MCP has started. Handshake headers (`Upgrade`, `Sec-WebSocket-*`, `Host`) are not passed on.
-- AWS signatures are valid for about five minutes, so the connection is made right before use, checked immediately
-  (a bad address or signature fails in `start()` with the real reason), and restarted with a fresh signature whenever the
-  browser session changes.
-- `gate.py` is the "Take over" pause: a paused tool call waits, then is *not executed* and the model is told to look again.
-- Dangerous tools (close page, resize, arbitrary code, file upload) are removed; screenshots only reach the model as text via `look()`.
-
-## Tests (all in Docker, nothing touches AWS)
-| Command | What it proves |
+| Method | Meaning |
 |---|---|
-| `docker run ... python -m unittest discover -s cloud_browser_agent/tests -t .` | 43 fast tests: lifecycle, SQLite, signing, request shapes, config files |
-| `cloud_browser_agent/tests/run_local_integration.sh` | the real connection code through a fake AgentCore gateway to a local Chromium: signature checked independently, stale and bad signatures refused, tools load, page read, pause gate, restart on a new session, no signed headers left on disk |
-| `TEST_MODULE=stress_restart cloud_browser_agent/tests/run_local_integration.sh` | 12 consecutive restarts |
-| `cloud_browser_agent/tests/run_local_e2e.sh "<task>"` | a real Deep Agents run (OpenAI key from `../.env`, a few cents) through the whole path, including the vision tool |
+| `start_session(user, profile_id, timeout, viewport)` / `wait_ready` / `session_status` / `stop_session` | the browser's life |
+| `automation_connection(session)` | `(wss URL, headers)` for the agent's CDP connection, fetched fresh each time |
+| `live_view_url(session)` | what the UI shows (a page for iframe-style backends, a signed URL for DCV) |
+| `set_automation_enabled(session, bool)` | hide the agent's stream while the user types secrets (AgentCore only; no-op elsewhere) |
+| `create_profile` / `save_profile` / `delete_profile` | saved logins |
+| `tabs` / `open_tab` / `close_tab` | optional: lets the UI draw the tab strip when the live view shows one page |
+| `profile_at_start` (flag) | `True` if the profile must exist when the session starts and is written when it ends |
 
-The fake gateway found a real bug: botocore signs with its own clock, so `X-Amz-Date` has to be read back from the
-signed request (computing it beforehand caused intermittent signature mismatches). Fixed, with a regression test.
+| | docker | browserbase | agentcore |
+|---|---|---|---|
+| Saved logins | Docker volume | Browserbase context | AgentCore profile |
+| `profile_at_start` | yes | yes | no (saved from a running session) |
+| Agent connection | `ws://container:8080/cdp/...` | `connectUrl` | SigV4-signed headers (about 5 min) |
+| Live view | screencast via control-plane bridge | Browserbase page | Amazon DCV stream |
+| Tab strip | from Chromium `/json` | from `/debug` | from the DCV view itself |
+| Hide agent from secrets | pause gate only | pause gate only (recording off) | stream switch (`UpdateBrowserStream`) |
 
-## The v2 UI and live view (built, tested locally)
-`ui/` is a vanilla-JS page (same look as v1) served by the control plane. Open a browser, chat with the agent, watch the
-live view, take over, type secrets privately, close the browser (logins saved).
-- **Live view = an iframe.** The control plane returns a `viewer_url`. For AgentCore it is `/viewer/dcv.html#url=<signed link>`,
-  a small page (`ui/viewer/dcv.js`) that drives AWS's DCV Web Client the way AWS's own React component does: authenticate with
-  the presigned URL, connect, scale the remote viewport to fit, report `connected` / `disconnected` to the page. The page
-  asks for a fresh signed link and reloads the iframe if the stream drops (links last 5 minutes).
-- **DCV files are never committed.** Their licence is limited, non-transferable, internal-use. The `Dockerfile` fetches them
-  from AWS's `bedrock-agentcore` npm package at build time into `/app/dcv-sdk`; `cloud_browser_agent/.gitignore` excludes `dcv-sdk/`.
-- **Take over** pauses the agent (`/pause`), **Private input** switches the agent's automation stream off
-  (`/secret-entry`) and shows a banner; sending a task turns it back off. While the agent works, an overlay blocks the
-  live view; heartbeats keep the session alive; a "Browser closed" overlay appears if the server ended it.
+Test-only providers: `fake` (simulated, includes write-once profiles and a zero quota) and `testgw` (a real local Chromium
+behind a signed fake gateway, used by the dev stack and the signing tests).
 
-### Run it locally with no AWS: `cloud_browser_agent/dev/run_dev_stack.sh`, then open http://localhost:8100
-A real headless Chromium, the signed fake gateway, a dev live viewer (screencast to a canvas, with mouse and keyboard),
-the control plane + UI, and the agent service (OpenAI key from `../.env`). `DEV_VIEWER=dcv` swaps in the stand-in DCV
-script to exercise the DCV viewer page. Stop with `dev/stop_dev_stack.sh`.
+## Control plane (`control/`)
 
-**Verified here:** open session, live view streaming real pixels, agent task from the chat (friendly steps, markdown
-answer), clicking and typing in the live view (including text insertion), private input, take over mid-task (agent
-paused server-side), reuse of a live session after a page reload.
-**Not verified:** the real DCV stream (needs a live AgentCore session; our DCV page follows the documented API and the
-code in AWS's component, but has only run against the stand-in), and hand back through to the end of a task (an
-environment hiccup interrupted that run).
+- **`core.py` (`SessionService`)**: `open`, `heartbeat`, `save`, `release`, `reap`, `secret_entry`, `forget`, `recover`.
+  One browser per user (a per-user lock, so two tabs cannot log each other out). The UI sends a heartbeat every 15 s; after
+  `IDLE_AFTER_S` (120) without one the user's browser is saved and released. It autosaves every 60 s where saving mid-session
+  is meaningful. Durations use a **monotonic clock** (a suspended VM once made every user look idle for 15 minutes).
+- **`store.py`**: SQLite with two tables, `users` (profile pointer, save status) and `active` (live sessions, so a restart can
+  **re-adopt** sessions that are still running instead of leaving them running and billing).
+- **`app.py`**: the HTTP API (`/api/sessions`, heartbeat, release, tabs, secret-entry, `/connection` for the agent, config),
+  the static UI, and the screencast bridge. `PROVIDER` picks the backend.
+- **`live_bridge.py`**: for the Docker provider, relays a CDP screencast to the viewer and mouse/keyboard back.
+- Profile strategies: `overwrite` (one profile per user, saved in place; the default except for AgentCore) and `rotate` (a new
+  profile per save, then delete the old one; used for AgentCore while it is unknown whether saves overwrite).
 
-### A bug this found
-Idle and autosave timing used the wall clock. The dev VM was suspended, the clock jumped 15 minutes, and every user looked
-idle for 15 minutes and was released. Durations now use a monotonic clock (wall time only for stored timestamps), with a
-regression test.
+## Agent service (`agent/`)
+
+- **Deep Agents** coordinator with a browser subagent, OpenAI for both the main and the vision model.
+- **Playwright MCP** gives the subagent its browser tools. One persistent MCP process per user is connected to that user's
+  remote browser; the address comes from the control plane (`ControlPlaneSource`). Connection headers go into a `0600` temp
+  config file, never a command line, and the file is deleted once MCP has started.
+- **Accessibility snapshots first**; a `look()` tool asks the vision model about a screenshot only when text is not enough, and
+  returns text (screenshots never go to the main model).
+- **`gate.py`** is the "Take over" pause: a paused tool call waits, is then *not executed*, and the model is told to look again.
+- Dangerous tools (close page, resize, arbitrary code, file upload) are removed.
+- **`events.py`** turns agent steps into UI events, including `agent_tab`, parsed from Playwright MCP's "(current)" tab marker.
+
+## UI (`ui/`)
+
+Vanilla JS, no build step. The chat is the main view. When a browser is open it appears as a small live **card** on the right;
+clicking it opens the large browser panel beside the chat (expand = full window, X = back to the card). The panel has the tab
+strip, **Take over**, and **Private input**. Frame colour shows who is in control (green = you, blue = the agent). The tab the
+agent is working in is the active one; the tab list is polled every 2 s while the agent works, every 8 s when idle, and not at
+all while the page is hidden.
+
+## Security notes
+
+- The OpenAI key and provider keys stay on the server side (`.env`, git-ignored). `/connection` returns credentials, so it
+  requires `INTERNAL_TOKEN`.
+- The API and live bridge have **no user authentication yet** and are bound to `127.0.0.1`. Add auth before exposing them.
+- The Docker provider mounts the Docker socket (root on the host): laptop use only.
+- Website approvals and the cookie vault from v1 are **not ported** to this version yet.
+
+## Problems found while building, and what fixed them
+
+- botocore signs with its own clock, so `X-Amz-Date` must be read back from the signed request (intermittent AgentCore 403s).
+- Chromium flushes cookies only on an orderly quit; `SIGTERM` loses them. Fixed with a `Browser.close` shutdown.
+- A wall-clock jump after VM suspend released every user. Fixed with a monotonic clock.
+- A Browserbase session ends when the last CDP client disconnects unless `keepAlive` is on.
+- A Browserbase context attached after the session starts saves nothing; it must exist first.
+- A profile created for a session that then failed to start leaked; now removed.
 
 ## Not built yet
-1. Website approvals and the cookie backup in the v2 agent service (v1 has them; not ported yet).
-2. Website approvals cards in the UI (the agent side is not ported yet).
-3. Our own backup of cookies and local storage in SQLite or a file (independent of profiles, covers the 100-profile and
-   write-once risks). Provider-agnostic.
-4. User authentication, when this moves into the FastAPI app.
 
-## Deploying
-Scope: only the AgentCore **Browser tool** is used (sessions, live view, profiles). Not AgentCore Runtime, Memory or Gateway.
-The agent stays our own Deep Agents code. State is **SQLite**. No DynamoDB, ECS, Secrets Manager or Cognito.
-
-**Now (POC): everything on your machine, only the browsers run in AWS.**
-`docker compose up` in `cloud_browser_agent/` runs the control plane (FastAPI + SQLite file in a Docker volume). The agent service
-(Deep Agents + Playwright MCP, your existing Docker app) connects to the browser through the signed address the control
-plane hands out. The IAM user's keys sit in `cloud_browser_agent/.env.aws` (git-ignored).
-
-**Later: inside your FastAPI app.** `control/` has no framework lock-in beyond `app.py`: mount its routes into your app and
-keep the same SQLite file. Move the OpenAI key and the user login wherever that app already keeps them.
-
-**SQLite holds:** `users` (saved-profile pointer, save status) and `active` (live sessions, so a restart can re-adopt or
-clean up sessions instead of leaving them running and billing).
-
-## AWS access needed
-Only the `bedrock-agentcore` browser actions in `iam-policy.json`, 12 in all: start/get/stop/list sessions, the automation and
-live-view streams, the stream toggle, and create/get/delete/list/save profiles. No S3, no Bedrock models, no IAM, no STS.
+1. Website approvals and the cookie backup/vault in this version (v1 has them).
+2. User authentication.
+3. Our own provider-independent backup of cookies/localStorage.
+4. A live test of AgentCore (the test AWS account's quotas were zero) and of the real DCV stream.
