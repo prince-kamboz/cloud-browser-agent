@@ -1,6 +1,6 @@
 <!doctype html>
 <meta charset="utf-8">
-<title>Live view (dev)</title>
+<title>Live view</title>
 <style>
   html, body { margin: 0; height: 100%; background: #0f0f11; overflow: hidden; }
   canvas { width: 100%; height: 100%; object-fit: contain; outline: 0; display: block; }
@@ -11,7 +11,8 @@
 <textarea id="kb" autocapitalize="off" autocomplete="off" spellcheck="false"></textarea>
 <div id="msg">Connecting to the live view…</div>
 <script>
-// Dev stand-in for the DCV viewer: same contract with the parent page (postMessage connected / disconnected).
+// Screencast live view (CDP frames on a canvas, input sent back): same contract with the parent page as the DCV viewer
+// (postMessage connected / disconnected). Used by the Docker Chromium provider and the dev stack.
 const kb = document.getElementById('kb'), cv = document.getElementById('c'), ctx = cv.getContext('2d'), msg = document.getElementById('msg');
 const say = (type, detail) => parent.postMessage({ source: 'live-view', type, detail }, '*');
 const ws = new WebSocket(`ws://${location.host}/ws`);

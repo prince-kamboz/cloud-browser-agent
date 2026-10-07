@@ -45,9 +45,9 @@ logging.getLogger("uvicorn.access").addFilter(_QuietPolling())
 
 def make_service() -> SessionService:
     kind = os.getenv("PROVIDER", "agentcore")
-    if kind == "local":
-        from cloud_browser_agent.provider.local import LocalDevProvider
-        provider = LocalDevProvider(time.time, viewer_kind=os.getenv("DEV_VIEWER", "iframe"))
+    if kind == "testgw":
+        from cloud_browser_agent.provider.testgateway import TestGatewayProvider
+        provider = TestGatewayProvider(time.time, viewer_kind=os.getenv("DEV_VIEWER", "iframe"))
     elif kind == "fake":
         from cloud_browser_agent.provider.fake import FakeProvider
         provider = FakeProvider(time.time, profile_mode=os.getenv("FAKE_PROFILE_MODE", "overwrite"),

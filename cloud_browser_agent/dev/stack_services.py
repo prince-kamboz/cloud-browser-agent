@@ -5,7 +5,7 @@ import threading
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 
 from cloud_browser_agent.dev import screencast_server
-from cloud_browser_agent.provider.local import DEV_CREDS
+from cloud_browser_agent.provider.testgateway import DEV_CREDS
 from cloud_browser_agent.tests.fake_gateway import FakeGateway
 
 SITE = {

@@ -1,6 +1,6 @@
 """Integration test: the v2 agent connection against a LOCAL Chromium, through the fake signed gateway.
 
-Run inside the v2-agent image, in the network namespace of a Chromium container (see run_local_integration.sh).
+Run inside the cba-agent image, in the network namespace of a Chromium container (see run_local_integration.sh).
 """
 import asyncio
 import datetime

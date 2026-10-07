@@ -13,7 +13,7 @@ from websockets.datastructures import Headers
 from websockets.http11 import Response
 
 CHROMIUM = os.getenv("CHROMIUM_HTTP", "http://127.0.0.1:9222")
-PAGE = Path(__file__).resolve().parent.parent / "ui" / "viewer" / "dev.html"
+PAGE = Path(__file__).resolve().parent.parent / "ui" / "viewer" / "screencast.html"
 
 
 def first_page_ws() -> str:

@@ -1,4 +1,4 @@
-"""Dev-only provider: fake bookkeeping (sessions, profiles) but a REAL local Chromium behind a signed fake gateway,
+"""Test-only provider (PROVIDER=testgw): fake bookkeeping (sessions, profiles) but a REAL local Chromium behind a signed fake gateway,
 and a real screencast viewer. Lets the whole v2 stack (UI, control plane, agent) run with real pixels and no AWS.
 
 viewer_kind="iframe": the live view is a plain web page (our screencast viewer)
@@ -16,7 +16,7 @@ from .fake import FakeProvider
 DEV_CREDS = Credentials("AKIATESTTESTTESTTEST", "test-secret-test-secret", "test-session-token")
 
 
-class LocalDevProvider(FakeProvider):
+class TestGatewayProvider(FakeProvider):
     def __init__(self, clock, viewer_kind: str = "iframe", **kw):
         super().__init__(clock, **kw)
         self.viewer_kind = viewer_kind
