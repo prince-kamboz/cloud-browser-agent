@@ -13,7 +13,9 @@ let session = null;            // { user, viewer_url, ... } while a browser is o
 let state = 'none';            // none | ready | running | paused
 let privateOn = false;
 let abortRun = null, heartbeat = null, viewerRetries = 0, rejectedRun = false;
-let threadId = crypto.randomUUID();
+// crypto.randomUUID() exists only on https pages and localhost; opening the UI by a LAN address or hostname would crash the whole page
+const newId = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2, 10));
+let threadId = newId();
 
 const cleanUser = (v) => (v || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 32);
 try { els.user.value = localStorage.getItem('v2user') || els.user.value; } catch {}
@@ -72,7 +74,7 @@ $('detailsBtn').onclick = () => {
 };
 $('newChatBtn').onclick = async () => {
   if (abortRun) { await post(agent('/stop'), { user: session.user }); abortRun.abort(); }
-  threadId = crypto.randomUUID(); els.messages.innerHTML = ''; addMsg('system', 'New conversation started.');
+  threadId = newId(); els.messages.innerHTML = ''; addMsg('system', 'New conversation started.');
 };
 
 // ---------------------------------------------------------------- state -> screen
