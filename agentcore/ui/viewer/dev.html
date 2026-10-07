@@ -1,0 +1,56 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Live view (dev)</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0f0f11; overflow: hidden; }
+  canvas { width: 100%; height: 100%; object-fit: contain; outline: 0; display: block; }
+  #kb { position: absolute; left: 0; top: 0; width: 1px; height: 1px; opacity: 0; border: 0; padding: 0; resize: none; }
+  #msg { position: absolute; inset: 0; display: grid; place-items: center; color: #bbb; font: 14px system-ui; pointer-events: none; }
+</style>
+<canvas id="c"></canvas>
+<textarea id="kb" autocapitalize="off" autocomplete="off" spellcheck="false"></textarea>
+<div id="msg">Connecting to the live view…</div>
+<script>
+// Dev stand-in for the DCV viewer: same contract with the parent page (postMessage connected / disconnected).
+const kb = document.getElementById('kb'), cv = document.getElementById('c'), ctx = cv.getContext('2d'), msg = document.getElementById('msg');
+const say = (type, detail) => parent.postMessage({ source: 'live-view', type, detail }, '*');
+const ws = new WebSocket(`ws://${location.host}/ws`);
+let first = true;
+ws.onmessage = async (e) => {
+  const m = JSON.parse(e.data);
+  if (m.t !== 'frame') return;
+  const bmp = await createImageBitmap(await (await fetch('data:image/jpeg;base64,' + m.data)).blob());
+  if (cv.width !== m.w || cv.height !== m.h) { cv.width = m.w; cv.height = m.h; }
+  ctx.drawImage(bmp, 0, 0, m.w, m.h); bmp.close();
+  if (first) { first = false; msg.remove(); say('connected'); }
+};
+ws.onclose = () => { msg && (msg.textContent = 'Live view disconnected'); say('disconnected', 'socket closed'); };
+ws.onerror = () => say('error', 'socket error');
+const send = (o) => ws.readyState === 1 && ws.send(JSON.stringify(o));
+const at = (e) => { const r = cv.getBoundingClientRect(), s = Math.min(r.width / cv.width, r.height / cv.height) || 1;
+  return { x: Math.round((e.clientX - r.left - (r.width - cv.width * s) / 2) / s), y: Math.round((e.clientY - r.top - (r.height - cv.height * s) / 2) / s) }; };
+const mods = (e) => (e.altKey ? 1 : 0) | (e.ctrlKey ? 2 : 0) | (e.metaKey ? 4 : 0) | (e.shiftKey ? 8 : 0);
+const BTN = ['left', 'middle', 'right']; let held = 0;
+cv.addEventListener('mousedown', (e) => { kb.focus(); held = 1 << e.button; send({ t: 'mouse', type: 'mousePressed', ...at(e), button: BTN[e.button] || 'left', clickCount: e.detail || 1, modifiers: mods(e) }); });
+cv.addEventListener('mouseup', (e) => { held = 0; send({ t: 'mouse', type: 'mouseReleased', ...at(e), button: BTN[e.button] || 'left', clickCount: e.detail || 1, modifiers: mods(e) }); });
+cv.addEventListener('mousemove', (e) => send({ t: 'mouse', type: 'mouseMoved', ...at(e), buttons: held, modifiers: mods(e) }));
+cv.addEventListener('wheel', (e) => { e.preventDefault(); send({ t: 'mouse', type: 'mouseWheel', ...at(e), deltaX: e.deltaX, deltaY: e.deltaY, modifiers: mods(e) }); }, { passive: false });
+cv.addEventListener('contextmenu', (e) => e.preventDefault());
+// Keys. Real key presses go as key events (pages see keydown/keyup). Text that arrives WITHOUT a key press (IME,
+// mobile keyboards, emoji, dictation, automation that inserts text) lands in the hidden textarea and is sent as text.
+for (const [dom, type] of [['keydown', 'keyDown'], ['keyup', 'keyUp']]) kb.addEventListener(dom, (e) => {
+  if (e.isComposing || e.keyCode === 229) return;                                 // an IME is composing: wait for its text
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') return;          // let the paste handler deal with it
+  e.preventDefault();                                                           // so the textarea never also receives the character
+  const printable = e.key.length === 1 && !(e.ctrlKey || e.metaKey || e.altKey);
+  send({ t: 'key', type: printable ? (type === 'keyDown' ? 'keyDown' : 'keyUp') : (type === 'keyDown' ? 'rawKeyDown' : 'keyUp'),
+    key: e.key, code: e.code, windowsVirtualKeyCode: e.keyCode, modifiers: mods(e), ...(printable && type === 'keyDown' ? { text: e.key, unmodifiedText: e.key } : {}) });
+});
+kb.addEventListener('input', (e) => {
+  if (e.isComposing) return;
+  const t = kb.value; kb.value = '';
+  if (t) send({ t: 'text', text: t });
+});
+kb.addEventListener('compositionend', (e) => { kb.value = ''; if (e.data) send({ t: 'text', text: e.data }); });
+kb.addEventListener('paste', (e) => { e.preventDefault(); const t = e.clipboardData && e.clipboardData.getData('text'); if (t) send({ t: 'text', text: t }); });
+</script>

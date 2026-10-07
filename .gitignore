@@ -1,5 +1,8 @@
 # secrets and per-user data: never commit
 .env
+.env.*
+!.env.example
+!.env.aws.example
 lifecycle-state/
 *.key
 
@@ -10,3 +13,6 @@ __pycache__/
 node_modules/
 *.zip
 *.tgz
+*.db
+*.db-wal
+*.db-shm

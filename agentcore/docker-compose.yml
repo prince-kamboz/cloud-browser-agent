@@ -1,0 +1,21 @@
+# AgentCore POC control plane, run locally.
+#   PROVIDER=fake docker compose up --build        (no AWS access needed: simulated browsers)
+#   docker compose up --build                      (real AgentCore: needs agentcore/.env.aws)
+name: agentcore-poc
+services:
+  control:
+    build: .
+    ports: ["127.0.0.1:8100:8100"]
+    env_file:
+      - path: .env.aws
+        required: false
+    environment:
+      - PROVIDER=${PROVIDER:-agentcore}
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      - PROFILE_STRATEGY=${PROFILE_STRATEGY:-rotate}
+      - IDLE_AFTER_S=${IDLE_AFTER_S:-120}
+      - INTERNAL_TOKEN=${INTERNAL_TOKEN:-}
+    volumes:
+      - control-data:/data
+volumes:
+  control-data:

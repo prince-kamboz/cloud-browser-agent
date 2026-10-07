@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Browser Agent v2</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+    <aside class="chat">
+      <header class="chat-head">
+        <div class="brand">
+          <span class="dot" id="statusDot"></span>
+          <div class="brand-text">
+            <div class="title">Browser Agent</div>
+            <div class="status" id="statusText">No browser open</div>
+          </div>
+        </div>
+        <div class="head-actions">
+          <button class="ghost" id="newChatBtn" title="Start a new conversation">New chat</button>
+          <button class="ghost" id="detailsBtn" title="Show technical steps">Details</button>
+        </div>
+      </header>
+
+      <div class="messages" id="messages">
+        <div class="msg system">Open a browser, then ask the agent to do something on the web, e.g. <em>"Find the top 3 Python repos trending on GitHub today."</em></div>
+      </div>
+
+      <form class="composer" id="composer">
+        <div class="composer-box">
+          <textarea id="input" rows="1" placeholder="What should the agent do?"></textarea>
+          <button type="button" class="stop" id="stopBtn" title="Stop" hidden>
+            <svg viewBox="0 0 24 24" width="16" height="16"><rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/></svg>
+          </button>
+          <button type="submit" class="send" id="sendBtn" title="Send">
+            <svg viewBox="0 0 24 24" width="18" height="18"><path d="M12 19V5M5 12l7-7 7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
+        <div class="hint">Enter to send · Shift+Enter for a new line</div>
+      </form>
+    </aside>
+
+    <main class="viewer" id="viewer">
+      <div class="bar">
+        <input id="user" value="alice" title="Whose browser this is (saved logins belong to this name)" autocomplete="off" spellcheck="false" />
+        <button class="primary" id="openBtn">Open browser</button>
+        <span class="live-badge" id="liveBadge" title="Live view"><i></i>LIVE</span>
+        <span class="grow"></span>
+        <button id="privateBtn" title="Hide the page from the agent while you type a password" hidden>Private input</button>
+        <button class="takeover" id="takeoverBtn" hidden>Take over</button>
+        <button class="ghost" id="closeBtn" title="Save logins and close the browser" hidden>Close browser</button>
+        <button class="ghost" id="forgetBtn" title="Delete this user's saved logins">Forget logins</button>
+      </div>
+      <div class="screen">
+        <iframe id="live" title="Live browser" allow="clipboard-read; clipboard-write"></iframe>
+        <div class="empty" id="empty">Open a browser to see it here.</div>
+        <div class="overlay" id="overlay" hidden><div class="overlay-pill">The agent is using the browser. Press <b>Take over</b> to control it yourself</div></div>
+        <div class="banner" id="privateBanner" hidden>Private input is on: the agent cannot see this page</div>
+        <div class="ended" id="ended" hidden><div><h2 style="margin:0 0 8px">Browser closed</h2><p style="margin:0 0 14px">It was closed after inactivity. Your logins are saved.</p><button class="primary" id="reopenBtn">Open it again</button></div></div>
+      </div>
+    </main>
+  </div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

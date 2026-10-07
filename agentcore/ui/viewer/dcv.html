@@ -1,0 +1,13 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Live view</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0f0f11; overflow: hidden; }
+  #box { position: absolute; inset: 0; overflow: hidden; }
+  #display { transform-origin: top left; position: absolute; top: 0; }
+  #msg { position: absolute; inset: 0; display: grid; place-items: center; color: #bbb; font: 14px system-ui; text-align: center; padding: 24px; pointer-events: none; }
+</style>
+<div id="box"><div id="display"></div></div>
+<div id="msg">Connecting to the live view…</div>
+<script src="/dcv-sdk/dcvjs-umd/dcv.js" onerror="window.__noDcv = true"></script>
+<script src="dcv.js"></script>

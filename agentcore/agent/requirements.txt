@@ -1,0 +1,7 @@
+deepagents
+langchain-openai
+langchain-mcp-adapters
+fastapi
+uvicorn
+websockets
+boto3

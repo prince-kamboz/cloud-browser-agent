@@ -1,0 +1,42 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AgentCoreBrowserSessionsStreamsProfiles",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock-agentcore:StartBrowserSession",
+        "bedrock-agentcore:GetBrowserSession",
+        "bedrock-agentcore:StopBrowserSession",
+        "bedrock-agentcore:ConnectBrowserAutomationStream",
+        "bedrock-agentcore:ConnectBrowserLiveViewStream",
+        "bedrock-agentcore:UpdateBrowserStream",
+        "bedrock-agentcore:CreateBrowserProfile",
+        "bedrock-agentcore:GetBrowserProfile",
+        "bedrock-agentcore:DeleteBrowserProfile",
+        "bedrock-agentcore:SaveBrowserSessionProfile"
+      ],
+      "Resource": [
+        "arn:aws:bedrock-agentcore:*:aws:browser/aws.browser.v1",
+        "arn:aws:bedrock-agentcore:*:YOUR_ACCOUNT_ID:browser-profile/*"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": [
+            "us-east-1",
+            "ap-south-1"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "ListSessionsAndProfiles",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock-agentcore:ListBrowserSessions",
+        "bedrock-agentcore:ListBrowserProfiles"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
