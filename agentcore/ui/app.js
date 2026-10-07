@@ -263,4 +263,9 @@ function renderTabs(strip, tabs) {
   add.onclick = () => api(`/api/sessions/${session.user}/tabs`, { method: 'POST', body: JSON.stringify({ url: 'about:blank' }) }).then(pollTabs).catch((er) => addMsg('error', er.message));
   strip.append(add);
 }
-setInterval(pollTabs, 2000);
+// poll fast only while the agent is working; slowly when idle; not at all while this page is hidden
+(function loop() {
+  if (!document.hidden) pollTabs();
+  setTimeout(loop, abortRun ? 2000 : 8000);
+})();
+document.addEventListener('visibilitychange', () => { if (!document.hidden) pollTabs(); });

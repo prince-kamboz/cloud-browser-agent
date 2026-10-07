@@ -33,6 +33,16 @@ logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(
 log = logging.getLogger("control")
 
 
+class _QuietPolling(logging.Filter):
+    """The UI polls the tab list and sends heartbeats all the time: keep them out of the access log."""
+    def filter(self, record):
+        msg = record.getMessage()
+        return not ("/tabs " in msg and "GET" in msg or "/heartbeat " in msg)
+
+
+logging.getLogger("uvicorn.access").addFilter(_QuietPolling())
+
+
 def make_service() -> SessionService:
     kind = os.getenv("PROVIDER", "agentcore")
     if kind == "local":
