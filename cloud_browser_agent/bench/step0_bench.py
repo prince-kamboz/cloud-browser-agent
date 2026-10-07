@@ -1,6 +1,6 @@
 """Step 0: answer the open AgentCore Browser questions against a real account. Costs cents; cleans up after itself.
 
-  docker run --rm --env-file cloud_browser_agent/.env.aws -v "$PWD":/w -w /w python:3.12-slim \
+  docker run --rm --env-file deploy/aws/.env.aws -v "$PWD":/w -w /w python:3.12-slim \
      bash -c "pip install -q boto3 playwright && python -m cloud_browser_agent.bench.step0_bench --region us-east-1"
 
 (Playwright only drives a remote browser here, so no browser download is needed.)  Prints a report and writes bench_report.json.

@@ -2,8 +2,8 @@
 .env
 .env.*
 !.env.example
-!.env.aws.example
 lifecycle-state/
+dcv-sdk/
 *.key
 
 # local tooling and artifacts

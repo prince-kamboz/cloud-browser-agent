@@ -1,19 +1,21 @@
-# AgentCore POC control plane, run locally.
-#   PROVIDER=fake docker compose up --build        (no AWS access needed: simulated browsers)
-#   docker compose up --build                      (real AgentCore: needs cloud_browser_agent/.env.aws)
-#   PROVIDER=browserbase docker compose up --build (Browserbase: BROWSERBASE_* keys in the repo-root .env)
+# Cloud Browser Agent: control plane + agent service. The browser behind them is picked with PROVIDER:
+#   PROVIDER=browserbase docker compose up --build     Browserbase (keys in .env)
+#   PROVIDER=agentcore   docker compose up --build     Amazon Bedrock AgentCore Browser (keys in deploy/aws/.env.aws)
+#   PROVIDER=fake        docker compose up --build     simulated browsers, no accounts needed (UI and lifecycle only)
+# Open http://localhost:8100
 name: cloud-browser-agent
 services:
   control:
-    build: .
+    build: ./cloud_browser_agent
+    image: cba-control
     ports: ["127.0.0.1:8100:8100"]
     env_file:
-      - path: .env.aws
+      - path: ./.env
         required: false
-      - path: ../.env
+      - path: ./deploy/aws/.env.aws
         required: false
     environment:
-      - PROVIDER=${PROVIDER:-agentcore}
+      - PROVIDER=${PROVIDER:-browserbase}
       - AWS_REGION=${AWS_REGION:-us-east-1}
       - PROFILE_STRATEGY=${PROFILE_STRATEGY:-}
       - IDLE_AFTER_S=${IDLE_AFTER_S:-120}
@@ -23,11 +25,12 @@ services:
       - control-data:/data
   agent:
     build:
-      context: .
+      context: ./cloud_browser_agent
       dockerfile: agent/Dockerfile
+    image: cba-agent
     ports: ["127.0.0.1:8200:8200"]
     env_file:
-      - path: ../.env
+      - path: ./.env
         required: false
     environment:
       - CONTROL_URL=http://control:8100
