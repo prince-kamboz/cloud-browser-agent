@@ -23,7 +23,7 @@ button.icon { display: grid; place-items: center; width: 30px; height: 30px; pad
 button.takeover { background: var(--warn); color: #fff; border-color: var(--warn); font-weight: 600; border-radius: 999px; padding: 5px 14px; }
 button.takeover.active { background: var(--ok); border-color: var(--ok); }
 
-.app { display: grid; grid-template-columns: 420px 1fr; height: 100vh; }
+.app { display: grid; grid-template-columns: 1fr; height: 100vh; }
 
 /* ---------- chat ---------- */
 .chat { display: flex; flex-direction: column; background: var(--panel); border-right: 1px solid var(--line); min-height: 0; min-width: 0; }
@@ -166,3 +166,50 @@ button.on { background: color-mix(in srgb, var(--danger) 18%, transparent); bord
 .banner { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); background: rgba(201,58,47,.92); color: #fff; padding: 6px 14px; border-radius: 999px; font-size: 13px; z-index: 4; }
 .banner[hidden], .ended[hidden], .empty[hidden] { display: none; }
 .viewer.is-mine::after, .viewer.is-busy::after { z-index: 5; }
+
+
+/* ---------- v2.1: chat first, browser as a small card that opens into a large panel (like ChatGPT) ---------- */
+.session-bar { display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-bottom: 1px solid var(--line); }
+.session-bar input { font: inherit; font-size: 13px; padding: 5px 10px; width: 110px; border-radius: 999px; border: 1px solid var(--line); background: var(--bg); color: var(--text); }
+.session-bar .grow, .vhead .grow { flex: 1; }
+.session-bar [hidden] { display: none; }
+.vhead { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--line); }
+.vhead .vtitle { font-weight: 600; }
+.vhead .live-badge { margin: 0 4px; }
+.vhead [hidden] { display: none; }
+.vfoot { display: none; text-align: center; color: var(--muted); font-size: 13px; padding: 8px; background: var(--panel); border-top: 1px solid var(--line); }
+.card-hit { display: none; position: absolute; inset: 0; z-index: 4; border: 0; border-radius: 0; background: transparent; padding: 0; cursor: pointer; }
+.screen iframe { transform-origin: 0 0; }
+
+/* no browser yet: the chat is the whole page */
+body.mode-none .viewer { display: none; }
+body.mode-none .chat { max-width: 860px; width: 100%; margin: 0 auto; border-left: 1px solid var(--line); }
+
+/* card: chat in the middle, a live thumbnail of the browser in the right rail */
+body.mode-card .app { grid-template-columns: 1fr 360px; background: var(--bg); }
+body.mode-card .chat { width: 100%; max-width: 860px; margin: 0 auto; border-left: 1px solid var(--line); }
+body.mode-card .viewer { align-self: start; margin: 16px 16px 0 0; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: var(--panel); }
+body.mode-card .viewer::after { border-radius: 14px; border-width: 2px; }
+body.mode-card .vhead { border-bottom: 0; padding: 10px 12px 6px; }
+body.mode-card .vhead button { display: none; }
+body.mode-card .vhead .vtitle { font-size: 13px; color: var(--muted); }
+body.mode-card .tabrow, body.mode-card .banner, body.mode-card .overlay, body.mode-card .empty { display: none !important; }
+body.mode-card .screen { flex: none; height: auto; aspect-ratio: 16 / 10; margin: 0 12px 12px; border-radius: 8px; overflow: hidden; }
+body.mode-card .screen iframe { width: 1280px; height: 800px; inset: auto; top: 0; left: 0; transform: scale(var(--card-scale, .25)); pointer-events: none; }
+body.mode-card .card-hit { display: block; }
+
+/* open: chat narrows, the browser gets the room */
+body.mode-open .app { grid-template-columns: minmax(340px, 460px) 1fr; }
+body.mode-open .chat { max-width: none; }
+body.mode-open .vfoot { display: block; }
+
+/* wide: the browser takes the whole window */
+body.mode-wide .app { grid-template-columns: 1fr; }
+body.mode-wide .chat { display: none; }
+body.mode-wide .vfoot { display: block; }
+
+@media (max-width: 860px) {
+  body.mode-card .app, body.mode-open .app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+  body.mode-card .viewer { order: -1; margin: 12px; }
+  body.mode-open .viewer { order: -1; height: 55vh; }
+}

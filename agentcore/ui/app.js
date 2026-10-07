@@ -76,8 +76,26 @@ $('newChatBtn').onclick = async () => {
 
 // ---------------------------------------------------------------- state -> screen
 const LABELS = { none: 'No browser open', ready: 'Browser ready', running: 'Agent is working…', paused: 'You are in control (agent paused)' };
+let mode = 'none';
+function setMode(m) {
+  mode = m;
+  document.body.classList.remove('mode-none', 'mode-card', 'mode-open', 'mode-wide');
+  document.body.classList.add(`mode-${m}`);
+  $('expandBtn').title = m === 'wide' ? 'Back to chat + browser' : 'Expand';
+  sizeCard();
+}
+function sizeCard() {                              // the card shows the real 1280x800 page, scaled down to fit
+  const w = els.live.parentElement.clientWidth;
+  if (w) document.documentElement.style.setProperty('--card-scale', String(w / 1280));
+}
+new ResizeObserver(sizeCard).observe($('viewer'));
+$('cardHit').onclick = () => setMode('open');
+$('collapseBtn').onclick = () => setMode('card');
+$('expandBtn').onclick = () => setMode(mode === 'wide' ? 'open' : 'wide');
+
 function setState(s) {
   state = s;
+  if (s === 'none') setMode('none'); else if (mode === 'none') setMode('card');
   const open = s !== 'none', busy = s === 'running';
   els.dot.className = `dot ${s === 'none' ? '' : s === 'ready' ? 'idle' : s}`;
   els.statusText.textContent = LABELS[s];
