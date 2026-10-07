@@ -1,15 +1,20 @@
-"""LIVE test against Browserbase (uses real quota, a few minutes of browser time).
-Checks the whole lifecycle through SessionService: open -> set a login cookie -> release -> open again -> cookie is back.
-Run in Docker:  see run_live_browserbase.sh   (keys come from the environment, never printed)."""
+"""LIVE lifecycle test against a real backend: PROVIDER=browserbase (real quota, a little browser time) or PROVIDER=docker.
+Through SessionService: open -> set a cookie + localStorage -> release -> open again -> both are back.
+Run it with run_live.sh <provider> (Docker; keys come from the environment and are never printed)."""
 import asyncio, json, os, sys, time
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 import websockets
 from urllib.parse import urlparse
 from cloud_browser_agent.control.core import SessionService
 from cloud_browser_agent.control.store import SqliteStore
-from cloud_browser_agent.provider.browserbase import BrowserbaseProvider
 
-prov = BrowserbaseProvider(os.environ["BROWSERBASE_API_KEY"], os.environ["BROWSERBASE_PROJECT_ID"])
+KIND = os.environ.get("PROVIDER", "browserbase")
+if KIND == "docker":
+    from cloud_browser_agent.provider.docker_chromium import DockerChromiumProvider
+    prov = DockerChromiumProvider(os.getenv("DOCKER_BROWSER_IMAGE", "cba-chromium"), os.getenv("DOCKER_NETWORK", "cba-net"))
+else:
+    from cloud_browser_agent.provider.browserbase import BrowserbaseProvider
+    prov = BrowserbaseProvider(os.environ["BROWSERBASE_API_KEY"], os.environ["BROWSERBASE_PROJECT_ID"])
 svc = SessionService(prov, SqliteStore(":memory:"), strategy="overwrite", session_timeout_s=300)
 USER = "live_test_user"
 

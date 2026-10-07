@@ -1,8 +1,9 @@
 # Cloud Browser Agent: control plane + agent service. The browser behind them is picked with PROVIDER:
 #   PROVIDER=browserbase docker compose up --build     Browserbase (keys in .env)
 #   PROVIDER=agentcore   docker compose up --build     Amazon Bedrock AgentCore Browser (keys in deploy/aws/.env.aws)
+#   PROVIDER=docker      docker compose --profile docker up --build    a real Chromium in a local container, no account
 #   PROVIDER=fake        docker compose up --build     simulated browsers, no accounts needed (UI and lifecycle only)
-# Open http://localhost:8100
+# ./run.sh <provider> does the right thing for each. Open http://localhost:8100
 name: cloud-browser-agent
 services:
   control:
@@ -21,8 +22,13 @@ services:
       - IDLE_AFTER_S=${IDLE_AFTER_S:-120}
       - INTERNAL_TOKEN=${INTERNAL_TOKEN:-dev-internal-token}
       - AGENT_URL=http://localhost:8200
+      - DOCKER_NETWORK=cba-net
+      - DOCKER_BROWSER_IMAGE=cba-chromium
+      - DOCKER_MAX_BROWSERS=${DOCKER_MAX_BROWSERS:-5}
     volumes:
       - control-data:/data
+      # PROVIDER=docker starts browser containers through the Docker socket. That is root on the host: laptop use only.
+      - /var/run/docker.sock:/var/run/docker.sock
   agent:
     build:
       context: ./cloud_browser_agent
@@ -36,5 +42,14 @@ services:
       - CONTROL_URL=http://control:8100
       - INTERNAL_TOKEN=${INTERNAL_TOKEN:-dev-internal-token}
     depends_on: [control]
+  # Builds the browser image PROVIDER=docker starts per user; it does nothing when run (only the image matters).
+  chromium:
+    build: ./browsers/chromium
+    image: cba-chromium
+    entrypoint: ["true"]
+    profiles: ["docker"]
 volumes:
   control-data:
+networks:
+  default:
+    name: cba-net
