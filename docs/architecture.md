@@ -1,7 +1,7 @@
 # Architecture
 
 Cloud Browser Agent lets a chat agent drive a real browser that the user can watch and take over, with saved logins per
-user. The browser can come from three places (providers) behind one interface.
+user. The browser can come from four places (providers) behind one interface.
 
 ```
  User's browser (chat + live view)
@@ -11,6 +11,7 @@ user. The browser can come from three places (providers) behind one interface.
  │ Control plane (FastAPI)   │ ────────────────────────► │ Browser provider            │
  │ sessions, per-user lock,  │                           │  docker      local container │
  │ autosave, idle reaper,    │ ◄──── connection ──────── │  browserbase hosted browser │
+ │  browseruse  hosted browser │
  │ SQLite state              │                           │  agentcore   AWS browser    │
  └──────────▲────────────────┘                           └──────────────▲──────────────┘
             │ connection (token-protected)                              │ CDP (WebSocket)
@@ -37,14 +38,14 @@ provider, one browser container per user session.
 | `tabs` / `open_tab` / `close_tab` | optional: lets the UI draw the tab strip when the live view shows one page |
 | `profile_at_start` (flag) | `True` if the profile must exist when the session starts and is written when it ends |
 
-| | docker | browserbase | agentcore |
-|---|---|---|---|
-| Saved logins | Docker volume | Browserbase context | AgentCore profile |
-| `profile_at_start` | yes | yes | no (saved from a running session) |
-| Agent connection | `ws://container:8080/cdp/...` | `connectUrl` | SigV4-signed headers (about 5 min) |
-| Live view | screencast via control-plane bridge | Browserbase page | Amazon DCV stream |
-| Tab strip | from Chromium `/json` | from `/debug` | from the DCV view itself |
-| Hide agent from secrets | pause gate only | pause gate only (recording off) | stream switch (`UpdateBrowserStream`) |
+| | docker | browserbase | browseruse | agentcore |
+|---|---|---|---|---|
+| Saved logins | Docker volume | Browserbase context | Browser Use profile | AgentCore profile |
+| `profile_at_start` | yes | yes | yes | no (saved from a running session) |
+| Agent connection | `ws://container:8080/cdp/...` | `connectUrl` | `cdpUrl` resolved to `wss://` | SigV4-signed headers (about 5 min) |
+| Live view | screencast via control-plane bridge | Browserbase page | Browser Use page (own tabs and address bar) | Amazon DCV stream |
+| Tab strip | from Chromium `/json` | from `/debug` | inside the live view | from the DCV view itself |
+| Hide agent from secrets | pause gate only | pause gate only (recording off) | pause gate only | stream switch (`UpdateBrowserStream`) |
 
 Test-only providers: `fake` (simulated, includes write-once profiles and a zero quota) and `testgw` (a real local Chromium
 behind a signed fake gateway, used by the dev stack and the signing tests).
@@ -97,6 +98,7 @@ all while the page is hidden.
 - Chromium flushes cookies only on an orderly quit; `SIGTERM` loses them. Fixed with a `Browser.close` shutdown.
 - A wall-clock jump after VM suspend released every user. Fixed with a monotonic clock.
 - A Browserbase session ends when the last CDP client disconnects unless `keepAlive` is on.
+- Browser Use browsers keep running (and billing) after a dropped connection; they must be stopped through the API.
 - A Browserbase context attached after the session starts saves nothing; it must exist first.
 - A profile created for a session that then failed to start leaked; now removed.
 
@@ -105,4 +107,5 @@ all while the page is hidden.
 1. Website approvals and the cookie backup/vault in this version (v1 has them).
 2. User authentication.
 3. Our own provider-independent backup of cookies/localStorage.
+   (Also: when a saved profile fails to load on reopen, the control plane starts a fresh one and drops the old pointer; it should retry and keep the old profile.)
 4. A live test of AgentCore (the test AWS account's quotas were zero) and of the real DCV stream.
