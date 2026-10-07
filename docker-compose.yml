@@ -22,7 +22,7 @@ services:
       - PROFILE_STRATEGY=${PROFILE_STRATEGY:-}
       - IDLE_AFTER_S=${IDLE_AFTER_S:-120}
       - INTERNAL_TOKEN=${INTERNAL_TOKEN:-dev-internal-token}
-      - AGENT_URL=http://localhost:8200
+      - AGENT_URL=${AGENT_URL:-http://localhost:8200}
       - DOCKER_NETWORK=cba-net
       - DOCKER_BROWSER_IMAGE=cba-chromium
       - DOCKER_MAX_BROWSERS=${DOCKER_MAX_BROWSERS:-5}
@@ -41,6 +41,7 @@ services:
         required: false
     environment:
       - CONTROL_URL=http://control:8100
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:8100,http://127.0.0.1:8100}
       - INTERNAL_TOKEN=${INTERNAL_TOKEN:-dev-internal-token}
     depends_on: [control]
   # Builds the browser image PROVIDER=docker starts per user; it does nothing when run (only the image matters).
