@@ -1,0 +1,37 @@
+# AgentCore POC control plane, run locally.
+#   PROVIDER=fake docker compose up --build        (no AWS access needed: simulated browsers)
+#   docker compose up --build                      (real AgentCore: needs cloud_browser_agent/.env.aws)
+#   PROVIDER=browserbase docker compose up --build (Browserbase: BROWSERBASE_* keys in the repo-root .env)
+name: cloud-browser-agent
+services:
+  control:
+    build: .
+    ports: ["127.0.0.1:8100:8100"]
+    env_file:
+      - path: .env.aws
+        required: false
+      - path: ../.env
+        required: false
+    environment:
+      - PROVIDER=${PROVIDER:-agentcore}
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      - PROFILE_STRATEGY=${PROFILE_STRATEGY:-}
+      - IDLE_AFTER_S=${IDLE_AFTER_S:-120}
+      - INTERNAL_TOKEN=${INTERNAL_TOKEN:-dev-internal-token}
+      - AGENT_URL=http://localhost:8200
+    volumes:
+      - control-data:/data
+  agent:
+    build:
+      context: .
+      dockerfile: agent/Dockerfile
+    ports: ["127.0.0.1:8200:8200"]
+    env_file:
+      - path: ../.env
+        required: false
+    environment:
+      - CONTROL_URL=http://control:8100
+      - INTERNAL_TOKEN=${INTERNAL_TOKEN:-dev-internal-token}
+    depends_on: [control]
+volumes:
+  control-data:
