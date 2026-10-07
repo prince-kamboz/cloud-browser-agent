@@ -12,7 +12,7 @@ COPY provider /app/cloud_browser_agent/provider
 COPY control /app/cloud_browser_agent/control
 COPY ui /app/cloud_browser_agent/ui
 COPY --from=dcv /sdk /app/dcv-sdk
-ENV PYTHONUNBUFFERED=1 STATE_DB=/data/state.db
+ENV PYTHONUNBUFFERED=1 STATE_DIR=/data
 VOLUME /data
 EXPOSE 8100
 CMD ["uvicorn", "cloud_browser_agent.control.app:app", "--host", "0.0.0.0", "--port", "8100"]
