@@ -5,7 +5,7 @@ RUN cd /tmp && npm pack bedrock-agentcore --silent >/dev/null && tar xzf bedrock
  && mkdir -p /sdk && cp -r package/dist/src/tools/browser/live-view/nice-dcv-web-client-sdk/dcvjs-umd /sdk/
 
 FROM python:3.12-slim
-RUN pip install --no-cache-dir fastapi "uvicorn[standard]" boto3 pydantic
+RUN pip install --no-cache-dir fastapi "uvicorn[standard]" boto3 pydantic docker
 WORKDIR /app
 COPY __init__.py /app/cloud_browser_agent/__init__.py
 COPY provider /app/cloud_browser_agent/provider

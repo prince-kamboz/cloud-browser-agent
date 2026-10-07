@@ -15,9 +15,20 @@
 // (postMessage connected / disconnected). Used by the Docker Chromium provider and the dev stack.
 const kb = document.getElementById('kb'), cv = document.getElementById('c'), ctx = cv.getContext('2d'), msg = document.getElementById('msg');
 const say = (type, detail) => parent.postMessage({ source: 'live-view', type, detail }, '*');
-const ws = new WebSocket(`ws://${location.host}/ws`);
-let first = true;
-ws.onmessage = async (e) => {
+// Which socket: the control plane's bridge (#session=<id>[&tab=<id>]) or, in the dev stack, the dev screencast server (/ws).
+let ws, first;
+function connect() {
+  const q = new URLSearchParams(location.hash.slice(1)), proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  const url = q.get('session') ? `${proto}://${location.host}/live/${q.get('session')}/ws?tab=${encodeURIComponent(q.get('tab') || '')}` : `${proto}://${location.host}/ws`;
+  if (ws) { ws.onclose = null; ws.close(); }
+  first = true;
+  ws = new WebSocket(url);
+  ws.onmessage = onFrame;
+  ws.onclose = () => { document.getElementById('msg') && (msg.textContent = 'Live view disconnected'); say('disconnected', 'socket closed'); };
+  ws.onerror = () => say('error', 'socket error');
+}
+addEventListener('hashchange', connect);          // the UI switches tabs by changing the hash
+const onFrame = async (e) => {
   const m = JSON.parse(e.data);
   if (m.t !== 'frame') return;
   const bmp = await createImageBitmap(await (await fetch('data:image/jpeg;base64,' + m.data)).blob());
@@ -25,8 +36,7 @@ ws.onmessage = async (e) => {
   ctx.drawImage(bmp, 0, 0, m.w, m.h); bmp.close();
   if (first) { first = false; msg.remove(); say('connected'); }
 };
-ws.onclose = () => { msg && (msg.textContent = 'Live view disconnected'); say('disconnected', 'socket closed'); };
-ws.onerror = () => say('error', 'socket error');
+connect();
 const send = (o) => ws.readyState === 1 && ws.send(JSON.stringify(o));
 const at = (e) => { const r = cv.getBoundingClientRect(), s = Math.min(r.width / cv.width, r.height / cv.height) || 1;
   return { x: Math.round((e.clientX - r.left - (r.width - cv.width * s) / 2) / s), y: Math.round((e.clientY - r.top - (r.height - cv.height * s) / 2) / s) }; };

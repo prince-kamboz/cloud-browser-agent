@@ -12,6 +12,7 @@ POC: no user authentication yet. On AWS the user comes from the Cognito token, n
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import re
@@ -21,10 +22,11 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import urlencode
 
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from cloud_browser_agent.control import live_bridge
 from cloud_browser_agent.control.core import SessionService
 from cloud_browser_agent.control.store import SqliteStore
 from cloud_browser_agent.provider.base import ProviderError, QuotaExceeded
@@ -52,6 +54,11 @@ def make_service() -> SessionService:
         from cloud_browser_agent.provider.fake import FakeProvider
         provider = FakeProvider(time.time, profile_mode=os.getenv("FAKE_PROFILE_MODE", "overwrite"),
                                 max_profiles=int(os.getenv("FAKE_MAX_PROFILES", "100")))
+    elif kind == "docker":
+        from cloud_browser_agent.provider.docker_chromium import DockerChromiumProvider
+        provider = DockerChromiumProvider(os.getenv("DOCKER_BROWSER_IMAGE", "cba-chromium"), os.getenv("DOCKER_NETWORK", "cba-net"),
+                                          max_browsers=int(os.getenv("DOCKER_MAX_BROWSERS", "5")),
+                                          memory=os.getenv("DOCKER_BROWSER_MEMORY", "1g"))
     elif kind == "browserbase":
         from cloud_browser_agent.provider.browserbase import BrowserbaseProvider
         provider = BrowserbaseProvider(os.getenv("BROWSERBASE_API_KEY", ""), os.getenv("BROWSERBASE_PROJECT_ID", ""),
@@ -181,6 +188,27 @@ def new_tab(user: str, req: TabReq):
 def close_tab(user: str, tab_id: str):
     _tab_call(user, lambda info: svc.p.close_tab(info, tab_id))
     return {"ok": True}
+
+
+@app.websocket("/live/{session_id}/ws")
+async def live_ws(ws: WebSocket, session_id: str, tab: str = ""):
+    """Screencast bridge for backends that expose a raw DevTools endpoint (see control/live_bridge.py)."""
+    a = next((x for x in svc.active.values() if x.info.session_id == session_id), None)
+    page_ws = getattr(svc.p, "page_ws", None)
+    if a is None or page_ws is None:
+        await ws.close(code=4404)
+        return
+    await ws.accept()
+    try:
+        url = await asyncio.to_thread(page_ws, a.info, tab or None)
+        await live_bridge.run(ws, url)
+    except (WebSocketDisconnect, ProviderError, OSError, ConnectionError):
+        pass
+    finally:
+        try:
+            await ws.close()
+        except RuntimeError:
+            pass
 
 
 @app.post("/api/sessions/{user}/heartbeat")
