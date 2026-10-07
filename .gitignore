@@ -16,3 +16,4 @@ node_modules/
 *.db
 *.db-wal
 *.db-shm
+cloud_browser_agent/bench/results.json
