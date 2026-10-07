@@ -1,4 +1,4 @@
-"""LIVE lifecycle test against a real backend: PROVIDER=browserbase (real quota, a little browser time) or PROVIDER=docker.
+"""LIVE lifecycle test against a real backend: PROVIDER=browserbase, browseruse (real quota, a little browser time) or docker.
 Through SessionService: open -> set a cookie + localStorage -> release -> open again -> both are back.
 Run it with run_live.sh <provider> (Docker; keys come from the environment and are never printed)."""
 import asyncio, json, os, sys, time
@@ -12,6 +12,9 @@ KIND = os.environ.get("PROVIDER", "browserbase")
 if KIND == "docker":
     from cloud_browser_agent.provider.docker_chromium import DockerChromiumProvider
     prov = DockerChromiumProvider(os.getenv("DOCKER_BROWSER_IMAGE", "cba-chromium"), os.getenv("DOCKER_NETWORK", "cba-net"))
+elif KIND == "browseruse":
+    from cloud_browser_agent.provider.browseruse import BrowserUseProvider
+    prov = BrowserUseProvider(os.environ["BROWSER_USE_API_KEY"])
 else:
     from cloud_browser_agent.provider.browserbase import BrowserbaseProvider
     prov = BrowserbaseProvider(os.environ["BROWSERBASE_API_KEY"], os.environ["BROWSERBASE_PROJECT_ID"])

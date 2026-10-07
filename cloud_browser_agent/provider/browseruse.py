@@ -8,7 +8,7 @@ How the interface maps (API v4, auth header X-Browser-Use-API-Key):
   profile            -> a Browser Use *profile*              (cookies, localStorage; the docs: "one profile per user")
   stop               -> PATCH /browsers/{id} {"action":"stop"}   (the docs say NOT to rely on a dropped CDP connection; this
                         also stops billing and refunds unused time)
-  agent connection   -> session.cdpUrl                       (no extra headers)
+  agent connection   -> session.cdpUrl, resolved to its wss:// address through /json/version (no extra headers)
   live view          -> session.liveUrl                      (a hosted page, shown in an iframe)
 
 Built from the OpenAPI spec and docs; exercise it with cloud_browser_agent/bench/run_bench.sh once you have a key.
@@ -112,6 +112,14 @@ class BrowserUseProvider(BrowserProvider):
         url = r.get("cdpUrl")
         if not url or r.get("status") != "active":
             raise ProviderError(f"session is not running ({r.get('status')})")
+        if url.startswith("http"):                       # cdpUrl is an https base; the WebSocket address comes from /json/version
+            try:
+                status, raw = self._t("GET", f"{url.rstrip('/')}/json/version", {}, None, self._timeout)
+                if status != 200:
+                    raise ProviderError(f"CDP endpoint answered {status}")
+                url = json.loads(raw)["webSocketDebuggerUrl"]
+            except (OSError, KeyError, ValueError) as e:
+                raise ProviderError(f"could not resolve the CDP address: {e}") from e
         return url, {}
 
     def live_view_url(self, session, expires_s: int = 300) -> str:

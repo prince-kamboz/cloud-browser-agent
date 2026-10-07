@@ -1,5 +1,6 @@
 # Cloud Browser Agent: control plane + agent service. The browser behind them is picked with PROVIDER:
 #   PROVIDER=browserbase docker compose up --build     Browserbase (keys in .env)
+#   PROVIDER=browseruse  docker compose up --build     Browser Use Cloud browsers (key in .env)
 #   PROVIDER=agentcore   docker compose up --build     Amazon Bedrock AgentCore Browser (keys in deploy/aws/.env.aws)
 #   PROVIDER=docker      docker compose --profile docker up --build    a real Chromium in a local container, no account
 #   PROVIDER=fake        docker compose up --build     simulated browsers, no accounts needed (UI and lifecycle only)

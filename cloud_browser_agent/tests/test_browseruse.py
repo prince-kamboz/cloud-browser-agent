@@ -13,7 +13,7 @@ class FakeApi:
         self.calls, self.sessions, self.profiles, self.fail = [], {}, set(), None
 
     def __call__(self, method, url, headers, body, timeout):
-        path = url.split("/api/v4", 1)[1]
+        path = url.split("/api/v4", 1)[1] if "/api/v4" in url else url.split(".example", 1)[1]
         data = json.loads(body) if body else None
         self.calls.append((method, path, data, headers))
         if self.fail:
@@ -25,6 +25,8 @@ class FakeApi:
             sid = f"s{len(self.sessions) + 1}"
             self.sessions[sid] = {"id": sid, "status": "active", "cdpUrl": f"https://{sid}.cdp.example", "liveUrl": f"https://live.example/{sid}"}
             return 200, json.dumps(self.sessions[sid]).encode()
+        if method == "GET" and path.endswith("/json/version"):
+            return 200, json.dumps({"webSocketDebuggerUrl": "wss://s1.cdp.example/devtools/browser/BID"}).encode()
         if method == "GET" and path.startswith("/browsers/"):
             s = self.sessions.get(path.split("/")[2])
             return (200, json.dumps(s).encode()) if s else (404, b"{}")
@@ -62,7 +64,7 @@ class BrowserUseTests(unittest.TestCase):
 
     def test_connection_live_view_and_status(self):
         s = self.p.start_session("a")
-        self.assertEqual(self.p.automation_connection(s), (f"https://{s.session_id}.cdp.example", {}))
+        self.assertEqual(self.p.automation_connection(s), ("wss://s1.cdp.example/devtools/browser/BID", {}))   # resolved from the https base
         self.assertEqual(self.p.live_view_url(s), f"https://live.example/{s.session_id}")
         self.assertEqual(self.p.session_status(s), "READY")
 

@@ -59,6 +59,9 @@ def make_service() -> SessionService:
         provider = DockerChromiumProvider(os.getenv("DOCKER_BROWSER_IMAGE", "cba-chromium"), os.getenv("DOCKER_NETWORK", "cba-net"),
                                           max_browsers=int(os.getenv("DOCKER_MAX_BROWSERS", "5")),
                                           memory=os.getenv("DOCKER_BROWSER_MEMORY", "1g"))
+    elif kind == "browseruse":
+        from cloud_browser_agent.provider.browseruse import BrowserUseProvider
+        provider = BrowserUseProvider(os.getenv("BROWSER_USE_API_KEY", ""), proxy_country=os.getenv("BROWSER_USE_PROXY_COUNTRY") or None)
     elif kind == "browserbase":
         from cloud_browser_agent.provider.browserbase import BrowserbaseProvider
         provider = BrowserbaseProvider(os.getenv("BROWSERBASE_API_KEY", ""), os.getenv("BROWSERBASE_PROJECT_ID", ""),
@@ -70,7 +73,7 @@ def make_service() -> SessionService:
     return SessionService(
         provider, SqliteStore(os.getenv("STATE_DB", "state.db")),
         idle_after_s=float(os.getenv("IDLE_AFTER_S", "120")), save_every_s=float(os.getenv("SAVE_EVERY_S", "60")),
-        session_timeout_s=int(os.getenv("SESSION_TIMEOUT_S", "3600")), strategy=os.getenv("PROFILE_STRATEGY") or ("overwrite" if kind == "browserbase" else "rotate"))
+        session_timeout_s=int(os.getenv("SESSION_TIMEOUT_S", "3600")), strategy=os.getenv("PROFILE_STRATEGY") or ("overwrite" if kind in ("browserbase", "browseruse") else "rotate"))
 
 
 svc = make_service()
