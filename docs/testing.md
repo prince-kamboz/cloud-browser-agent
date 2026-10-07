@@ -7,7 +7,7 @@ Everything runs in Docker; nothing is installed on your machine.
 ```bash
 cloud_browser_agent/tests/run_unit_tests.sh
 ```
-63 tests: lifecycle logic, SQLite, request shapes and signing, the Docker and Browserbase providers against fakes, the agent's
+70 tests: lifecycle logic, SQLite, request shapes and signing, the Docker and Browserbase providers against fakes, the agent's
 config files and tab parsing. Add `TAIL=200` to see every test name.
 
 ## 2. Live lifecycle check against a real backend
@@ -16,10 +16,20 @@ config files and tab parsing. Add `TAIL=200` to see every test name.
 ./run.sh docker                                  # once, so the browser image and network exist
 cloud_browser_agent/tests/run_live.sh docker
 cloud_browser_agent/tests/run_live.sh browserbase   # uses a little real browser time; needs BROWSERBASE_* in .env
+cloud_browser_agent/tests/run_live.sh browseruse    # needs BROWSER_USE_API_KEY in .env
 ```
 Opens a session, sets a cookie and a localStorage value, releases, reopens, and checks both came back. Expect `RESULT: PASS`.
 
-## 3. Agent connection against a local Chromium (no accounts)
+## 3. Compare providers (benchmark)
+
+```bash
+cloud_browser_agent/bench/run_bench.sh --runs 5 --providers browserbase browseruse docker
+```
+Alternates the providers round by round and prints median / worst for startup, command round trip, page loads, screenshots,
+shutdown and reopen, plus reliability, cookie persistence and whether Google blocks the browser. Uses real browser time on each
+service. Results of the last run: [benchmarks.md](benchmarks.md).
+
+## 4. Agent connection against a local Chromium (no accounts)
 
 ```bash
 docker compose build agent                       # builds the cba-agent image these scripts use
@@ -31,7 +41,7 @@ cloud_browser_agent/tests/run_local_e2e.sh "Open example.com and tell me its tit
 The integration test checks the SigV4 signature independently, refuses stale and bad signatures, loads the tools, reads a
 page, exercises the pause gate, and checks no signed headers are left on disk.
 
-## 4. Manual scenarios in the UI
+## 5. Manual scenarios in the UI
 
 Start with `./run.sh <provider>`, open http://localhost:8100, click **Open browser**, click the card to open the panel.
 Run these with any provider (Browserbase's free plan allows one browser at a time).
